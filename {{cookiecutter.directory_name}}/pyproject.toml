@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "{{cookiecutter.directory_name}}"
+version = "{{cookiecutter.version}}"
+description = "{{cookiecutter.description}}"
+authors = ["{{cookiecutter.author}}"]
+license = "{{cookiecutter.license}}"
+
+[tool.poetry.dependencies]
+python = "^3.7"
+
+[tool.poetry.dev-dependencies]
+pytest = {version = "^5.3", allows-prereleases = true}
+pre-commit = {version = "^2.0", allows-prereleases = true}
+black = {version = "^18.3-alpha.0", allows-prereleases = true}
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
