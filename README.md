@@ -17,9 +17,10 @@ Sinta-se livre para usar, forkear e modificar a vontade!
 
 ### Uso
 
-1. Instale o [Cookiecutter](https://cookiecutter.readthedocs.io/en/latest/installation.html)
-2. Execute `cookiecutter gh:fbidu/cookie-py`
-3. O seu terminal irá te perguntar tudo o que precisar!
+1. Instale o [Poetry](https://python-poetry.org/docs/#installation)
+2. Instale o [Cookiecutter](https://cookiecutter.readthedocs.io/en/latest/installation.html)
+3. Execute `cookiecutter gh:fbidu/cookie-py`
+4. O seu terminal irá te perguntar tudo o que precisar!
 
 ### Itens Inclusos
 
@@ -52,9 +53,10 @@ Feel free to use, fork and modify at will!
 
 ### Usage
 
-1. Install [Cookiecutter](https://cookiecutter.readthedocs.io/en/latest/installation.html)
-2. Run `cookiecutter gh:fbidu/cookie-py`
-3. Your terminal will ask you everything it needs!
+1. Install [Poetry](https://python-poetry.org/docs/#installation)
+2. Install [Cookiecutter](https://cookiecutter.readthedocs.io/en/latest/installation.html)
+3. Run `cookiecutter gh:fbidu/cookie-py`
+4. Your terminal will ask you everything it needs!
 
 ### Batteries Included
 
