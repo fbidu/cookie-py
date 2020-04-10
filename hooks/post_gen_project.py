@@ -9,6 +9,7 @@ def init_git():
 
 def install_pre_commit():
     os.system("pre-commit install --install-hooks ")
+    os.system("pre-commit install -t pre-push ")
 
 
 if __name__ == "__main__":
