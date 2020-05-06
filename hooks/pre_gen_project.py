@@ -14,8 +14,9 @@ def command_exists(command):
     # Apparently, this is not a good practice
     # see: https://stackoverflow.com/a/677212/2713733
 
+    # If we're running Python 2
     if sys.version_info < (3,):
-        # If we're running Python 2
+
         from subprocess import Popen
         import os
 
