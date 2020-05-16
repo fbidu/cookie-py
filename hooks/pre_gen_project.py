@@ -4,6 +4,13 @@ before a project is generated
 """
 import sys
 
+POETRY_INSTALL_INSTRUCTIONS = """
+*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+| Poetry is not installed!                                                    |
+| Please refer to https://python-poetry.org/ for instructions.                |
+| In most systems, a `pip install poetry` is enough.                          |
+*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+"""
 
 def command_exists(command):
     """
@@ -37,4 +44,4 @@ def command_exists(command):
 
 if __name__ == "__main__":
     if not command_exists("poetry"):
-        sys.exit("Please install Poetry!")
+        sys.exit(POETRY_INSTALL_INSTRUCTIONS)
