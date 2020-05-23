@@ -1,6 +1,8 @@
 {
-    "directory_name": "My_Awesome_Project",
-    "description": "",
+    "project_name": "My Awesome Project",
+    "directory_name":"{{ cookiecutter.project_name|lower|replace(' ', '-') }}",
+    "pkg_name": "{{ cookiecutter.directory_name|replace('-', '_') }}",
+    "description": "{{ cookiecutter.project_name }} is awesome",
     "author": "Felipe 'Bidu' Rodrigues <felipe@felipevr.com>",
     "version": "0.1.0",
     "license": "MIT"
