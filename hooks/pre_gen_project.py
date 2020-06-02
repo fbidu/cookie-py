@@ -12,6 +12,15 @@ POETRY_INSTALL_INSTRUCTIONS = """
 *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
 """
 
+PRE_COMMIT_INSTALL_INSTRUCTIONS = """
+*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+| pre-commit is not installed!                                                |
+| Please refer to https://pre-commit.com/ for instructions.                   |
+| In most systems, a `pip install pre-commit` is enough.                      |
+*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
+"""
+
+
 def command_exists(command):
     """
     checks if `command` exists in the current shell
@@ -42,6 +51,15 @@ def command_exists(command):
 
     return which(command) is not None
 
+
 if __name__ == "__main__":
+    exit_messages = []
+
     if not command_exists("poetry"):
-        sys.exit(POETRY_INSTALL_INSTRUCTIONS)
+        exit_messages.append(POETRY_INSTALL_INSTRUCTIONS)
+
+    if not command_exists("pre-commit"):
+        exit_messages.append(PRE_COMMIT_INSTALL_INSTRUCTIONS)
+
+    if exit_messages:
+        sys.exit("\n".join(exit_messages))
