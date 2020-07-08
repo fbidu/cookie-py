@@ -30,9 +30,12 @@ _Itens marcados estão implementados!_
 * [x] Usar o pre-commit para cuidar de hooks pre-commit do git
 * [x] Instalar o Pytest
 * [x] Instalar o Black
+* [x] Executar Pytest pre-push
+* [x] Relatório de Coverage no Pytest
 * [ ] Adicionar um Dockerfile simples que cuida das dependências do Poetry
 
 ### Hooks de Pre-Commit Habilitados
+
 * [x] Black
 * [x] Pylint
 
@@ -46,7 +49,7 @@ for Python projects that includes everything I like to use.
 A cookiecutter template is useful to create new projects based on a pre-defined
 model. In every Python project I like to use some tools like Black, PyTest, PyLint, Pre-Commit and Poetry. This template install and sets up all those tools for me!
 
-It is highly opinionated since it reflects my personal choices about tooling,
+It is highly opinionated since it reflects my personal choices about tooling, 
 static analysis, hooks and so on.
 
 Feel free to use, fork and modify at will!
@@ -66,9 +69,11 @@ _Checked items are implemented_
 * [x] Use Pre-commit to handle git pre-commit hooks
 * [x] Install Pytest
 * [x] Install Black
+* [x] Run Pytest pre-push
+* [x] Coverage report on Pytest
 * [ ] Simple Dockerfile that handles Poetry dependencies
 
-
 ### Pre-Commit Hooks
+
 * [x] Black
 * [x] Pylint

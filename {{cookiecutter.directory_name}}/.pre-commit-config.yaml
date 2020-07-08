@@ -29,7 +29,8 @@ repos:
 
           - id: system
             name: PyTest
-            entry: poetry run pytest -v
+            entry: poetry run pytest --doctest-modules -v --cov={{cookiecutter.pkg_name}} --cov-report term-missing:skip-covered
             language: system
             pass_filenames: false
             stages: [push]
+            verbose: true
