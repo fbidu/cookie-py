@@ -1,6 +1,10 @@
 {
+    // Linting and Formating Settings
     "python.formatting.provider": "black",
     "python.linting.pylintEnabled": true,
+    "editor.formatOnSave": true,
+
+    // Testing Settings
     "python.testing.pytestArgs": [
         "tests",
         "--doctest-modules"
