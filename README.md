@@ -1,6 +1,14 @@
 # Bidu's Python Cookiecutter
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
+<p align="center">
+  
+`cookiecutter gh:fbidu/cookie-py`
+
+</p>
+
+---
+
 [:uk: English Description](#english)
 
 Esse é um modelo básico de [cookiecutter](https://cookiecutter.readthedocs.io)
