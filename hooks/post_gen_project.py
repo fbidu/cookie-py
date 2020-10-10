@@ -56,7 +56,7 @@ def set_vscode_python_path():
 
     settings["python.pythonPath"] = python_path
 
-    json.dump(settings, open(settings_path, 'wt'), indent=4, sort_keys=True)
+    json.dump(settings, open(settings_path, "wt"), indent=4, sort_keys=True)
 
 
 if __name__ == "__main__":
