@@ -9,6 +9,7 @@ version = "{{cookiecutter.version}}"
 python = "^3.7"
 
 [tool.poetry.dev-dependencies]
+bandit = "^1.7.0"
 black = {version = "^21.9", allow-prereleases = true}
 flake8 = "^4.0.1"
 ipython = "^7.18"
