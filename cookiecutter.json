@@ -6,6 +6,8 @@
     "author": "Felipe 'Bidu' Rodrigues <felipe@felipevr.com>",
     "version": "0.1.0",
     "license": "MIT",
-    "language": ["EN", "PT-BR", "Both"]
-
+    "language": ["EN", "PT-BR", "Both"],
+    "_copy_without_render": [
+        "*.github/workflows"
+    ]
 }
