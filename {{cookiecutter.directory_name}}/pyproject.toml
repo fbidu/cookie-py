@@ -17,6 +17,7 @@ pdbpp = "^0.10.3"
 pylint = "^2.4"
 pytest = {version = "^6.2"}
 pytest-cov = "^3.0"
+pytest-xdist = "^2.4.0"
 
 
 [build-system]
@@ -29,6 +30,7 @@ addopts = """
     --cov={{cookiecutter.pkg_name}}
     --cov-report term-missing:skip-covered
     --doctest-modules
+    -n 4
 """
 
 minversion = "6.0"
