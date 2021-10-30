@@ -1,6 +1,5 @@
-FROM python:3.7
-RUN pip install --user cookiecutter
-RUN pip install poetry
+FROM python:3.8
+RUN pip install cookiecutter poetry pre-commit
 ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /cookie
