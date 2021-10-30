@@ -41,7 +41,7 @@ _Itens marcados estão implementados!_
 * [x] Instalar o Black
 * [x] Executar Pytest pre-push
 * [x] Relatório de Coverage no Pytest
-* [ ] Adicionar um Dockerfile simples que cuida das dependências do Poetry
+* [x] Adicionar um Dockerfile simples que cuida das dependências do Poetry
 
 ### Hooks de Pre-Commit Habilitados
 
@@ -80,7 +80,7 @@ _Checked items are implemented_
 * [x] Install Black
 * [x] Run Pytest pre-push
 * [x] Coverage report on Pytest
-* [ ] Simple Dockerfile that handles Poetry dependencies
+* [x] Simple Dockerfile that handles Poetry dependencies
 
 ### Pre-Commit Hooks
 
