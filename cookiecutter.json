@@ -5,5 +5,7 @@
     "description": "{{ cookiecutter.project_name }} is awesome",
     "author": "Felipe 'Bidu' Rodrigues <felipe@felipevr.com>",
     "version": "0.1.0",
-    "license": "MIT"
+    "license": "MIT",
+    "language": ["EN", "PT-BR", "Both"]
+
 }

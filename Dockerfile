@@ -1,4 +1,4 @@
-FROM python:3.8-slim
+FROM python:3.8
 RUN pip install cookiecutter poetry pre-commit
 ENV PATH="/root/.local/bin:${PATH}"
 
