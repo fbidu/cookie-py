@@ -10,11 +10,13 @@ python = "^3.7"
 
 [tool.poetry.dev-dependencies]
 black = {version = "^21.9", allow-prereleases = true}
+flake8 = "^4.0.1"
 ipython = "^7.18"
+pdbpp = "^0.10.3"
 pylint = "^2.4"
 pytest = {version = "^6.2"}
 pytest-cov = "^3.0"
-flake8 = "^4.0.1"
+
 
 [build-system]
 build-backend = "poetry.masonry.api"
