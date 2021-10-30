@@ -9,12 +9,16 @@ version = "{{cookiecutter.version}}"
 python = "^3.7"
 
 [tool.poetry.dev-dependencies]
-black = {version = "^19.10-beta.0", allow-prereleases = true}
-ipython = "^7.13"
-pre-commit = {version = "^2.0"}
+bandit = "^1.7.0"
+black = {version = "^21.9b", allow-prereleases = true}
+flake8 = "^4.0.1"
+ipython = "^7.18"
+pdbpp = "^0.10.3"
 pylint = "^2.4"
-pytest = {version = "^6.0"}
-pytest-cov = "^2.10.0"
+pytest = {version = "^6.2"}
+pytest-cov = "^3.0"
+pytest-xdist = "^2.4.0"
+
 
 [build-system]
 build-backend = "poetry.masonry.api"
@@ -26,6 +30,7 @@ addopts = """
     --cov={{cookiecutter.pkg_name}}
     --cov-report term-missing:skip-covered
     --doctest-modules
+    -n 4
 """
 
 minversion = "6.0"
