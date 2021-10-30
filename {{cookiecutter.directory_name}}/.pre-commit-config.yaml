@@ -36,15 +36,18 @@ repos:
     rev: "1.7.0"
     hooks:
       - id: bandit
+        exclude: ^tests/
+
 
   - repo: local
     hooks:
       - id: system
         name: PyLint
-        entry: poetry run pylint
+        entry: poetry run pylint -j 0
         language: system
         files: \.py$
         stages: [commit]
+        exclude: ^tests/
 
       - id: system
         name: PyTest
