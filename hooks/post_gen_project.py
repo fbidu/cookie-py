@@ -13,7 +13,7 @@ def init_git():
     """
     Initializes a git repo in the newly created folder
     """
-    os.system("git init")
+    os.system("git init && git branch -M main")
 
 
 def install_pre_commit():
@@ -59,8 +59,16 @@ def set_vscode_python_path():
     json.dump(settings, open(settings_path, "wt"), indent=4, sort_keys=True)
 
 
+def run_pre_commit_hooks():
+    """
+    Does an initial run of all pre-commit hooks
+    """
+    os.system("git add . && pre-commit run --all-files")
+
+
 if __name__ == "__main__":
     init_git()
     instal_poetry_dependencies()
     install_pre_commit()
     set_vscode_python_path()
+    run_pre_commit_hooks()
