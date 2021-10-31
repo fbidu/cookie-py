@@ -2,6 +2,7 @@
 
 ---
 
+[![](https://img.shields.io/badge/fbidu's%20cookiecutter-gray?style=for-the-badge&logo=cookiecutter)](https://github.com/fbidu/cookie-py)
 <!-- Insert an image/gif/code snippet of the working project -->
 
 {% if cookiecutter.language == "Both" %}
