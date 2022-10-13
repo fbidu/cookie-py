@@ -29,6 +29,7 @@ run
 ```sh
 pre-commit install -t pre-commit -t pre-push
 ```
+
 {% endif %}
 {% if cookiecutter.language == "Both" or cookiecutter.language == "PT-BR" %}
 ## Uso
@@ -51,4 +52,5 @@ clonar o projeto, execute
 ```sh
 pre-commit install -t pre-commit -t pre-push
 ```
+
 {% endif %}

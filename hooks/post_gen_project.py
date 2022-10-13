@@ -13,7 +13,7 @@ def init_git():
     """
     Initializes a git repo in the newly created folder
     """
-    os.system("git init && git branch -M main")
+    os.system("git init")
 
 
 def install_pre_commit():
@@ -63,7 +63,11 @@ def run_pre_commit_hooks():
     """
     Does an initial run of all pre-commit hooks
     """
-    os.system("git add . && pre-commit run --all-files")
+    os.system("git add . && pre-commit run --all-files > /dev/null")
+
+
+def initial_commit():
+    os.system("git add . && git commit -m 'Initial commit' && git branch -M main")
 
 
 if __name__ == "__main__":
@@ -72,3 +76,4 @@ if __name__ == "__main__":
     install_pre_commit()
     set_vscode_python_path()
     run_pre_commit_hooks()
+    initial_commit()

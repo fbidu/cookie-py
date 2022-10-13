@@ -15,7 +15,7 @@ ENV PYTHONUNBUFFERED=1 \
     \
     # poetry
     # https://python-poetry.org/docs/configuration/#using-environment-variables
-    POETRY_VERSION=1.0.3 \
+    POETRY_VERSION=1.1.13 \
     # make poetry install to this location
     POETRY_HOME="/opt/poetry" \
     # make poetry create the virtual environment in the project's root
@@ -44,7 +44,7 @@ RUN apt-get update \
     build-essential
 
 # install poetry - respects $POETRY_VERSION & $POETRY_HOME
-RUN curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
+RUN curl -sSL https://raw.githubusercontent.com/sdispater/poetry/1.1.13/get-poetry.py | python
 
 # copy project requirement files here to ensure they will be cached.
 WORKDIR $PYSETUP_PATH
@@ -65,7 +65,7 @@ COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 RUN poetry install
 
 # will become mountpoint of our code
-WORKDIR /app
+WORKDIR /{{cookiecutter.directory_name}}
 
 
 CMD ["ipython"]
@@ -73,7 +73,7 @@ CMD ["ipython"]
 # `production` image used for runtime
 FROM python-base as production
 COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
-COPY . /app/
-WORKDIR /app
+COPY . /{{cookiecutter.directory_name}}
+WORKDIR /{{cookiecutter.directory_name}}
 
-CMD ["python"]
+CMD ["python", "{{cookiecutter.pkg_name}}"]
