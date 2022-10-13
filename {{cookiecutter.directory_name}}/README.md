@@ -2,12 +2,12 @@
 
 ---
 
+[![](https://img.shields.io/badge/fbidu's%20cookiecutter-gray?style=for-the-badge&logo=cookiecutter)](https://github.com/fbidu/cookie-py)
 <!-- Insert an image/gif/code snippet of the working project -->
 
 {% if cookiecutter.language == "Both" %}
 [🇧🇷 Descrição em Português](#uso)
 {% endif %}
-
 {% if cookiecutter.language == "Both" or cookiecutter.language == "EN" %}
 ## Usage
 
@@ -29,10 +29,9 @@ run
 ```sh
 pre-commit install -t pre-commit -t pre-push
 ```
+
 {% endif %}
-
 {% if cookiecutter.language == "Both" or cookiecutter.language == "PT-BR" %}
-
 ## Uso
 
 Os requerimentos são

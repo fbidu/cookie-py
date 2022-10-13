@@ -6,7 +6,7 @@ name = "{{cookiecutter.directory_name}}"
 version = "{{cookiecutter.version}}"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.8"
 
 [tool.poetry.dev-dependencies]
 bandit = "^1.7.0"
@@ -23,7 +23,7 @@ pytest-xdist = "^2.4.0"
 
 [build-system]
 build-backend = "poetry.masonry.api"
-requires = ["poetry>=0.12"]
+requires = ["poetry-core>=1.0.0"]
 
 [tool.pytest.ini_options]
 addopts = """
