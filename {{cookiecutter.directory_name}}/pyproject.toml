@@ -10,7 +10,7 @@ python = "^3.8"
 
 [tool.poetry.dev-dependencies]
 bandit = "^1.7.0"
-black = {version = "^21.9b", allow-prereleases = true}
+black = "^23.1.0"
 flake8 = "^4.0.1"
 ipython = "^7.18"
 pdbpp = "^0.10.3"
