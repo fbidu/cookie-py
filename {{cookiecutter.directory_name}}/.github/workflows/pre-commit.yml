@@ -1,45 +1,68 @@
-name: 'Pre commit/pre push checks'
+name: Code Quality
 
 on:
   pull_request:
   push:
+    branches:
+      - main
 
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-      #----------------------------------------------
-      #  -----  install & configure poetry  -----
-      #----------------------------------------------
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
-      #----------------------------------------------
-      #       load cached venv if cache exists
-      #----------------------------------------------
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v2
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
-      #----------------------------------------------
-      # install dependencies if cache does not exist
-      #----------------------------------------------
+          python-version: '{{cookiecutter.python_version}}'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-      #----------------------------------------------
-      # install root project
-      #----------------------------------------------
-      - name: Install library
-        run: poetry install --no-interaction
-      #----------------------------------------------
-      # Run pre-commit
-      #----------------------------------------------
-      - uses: pre-commit/action@v2.0.3
+        run: uv sync --dev
+
+      - name: Run pre-commit hooks
+        uses: pre-commit/action@v3.0.1
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '{{cookiecutter.python_version}}'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run type checking
+        run: uv run pyright
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '{{cookiecutter.python_version}}'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run security scan
+        run: uv run bandit -c pyproject.toml -r {{cookiecutter.pkg_name}}/

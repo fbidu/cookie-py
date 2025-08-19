@@ -1,0 +1,81 @@
+name: Test Cookiecutter Template
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-template:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.12', '3.13']
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Install dependencies
+      run: uv sync --dev
+
+    - name: Run template structure tests
+      run: uv run pytest tests/test_template_validation.py -v
+
+    - name: Run cookiecutter generation tests (fast)
+      run: uv run pytest tests/test_cookiecutter_generation.py -v -m "not slow"
+
+    - name: Run cookiecutter generation tests (slow)
+      if: matrix.python-version == '3.12'  # Only run slow tests on one Python version
+      run: uv run pytest tests/test_cookiecutter_generation.py -v -m "slow"
+
+  test-docker:
+    runs-on: ubuntu-latest
+    name: Test Template with Docker
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Build test Docker image
+      run: docker build -t cookie-py-test .
+
+    - name: Run template tests in Docker
+      run: docker run --rm cookie-py-test
+
+  code-quality:
+    runs-on: ubuntu-latest
+    name: Code Quality Checks
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Install dependencies
+      run: uv sync --dev
+
+    - name: Run ruff check
+      run: uv run ruff check .
+
+    - name: Run ruff format check
+      run: uv run ruff format --check .
+
+    - name: Run pyright type checking
+      run: uv run pyright
