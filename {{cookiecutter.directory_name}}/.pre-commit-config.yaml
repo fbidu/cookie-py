@@ -2,7 +2,7 @@
 # See https://pre-commit.com/hooks.html for more hooks
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.0.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
         stages: [commit]
@@ -12,46 +12,41 @@ repos:
         stages: [commit]
       - id: check-added-large-files
         stages: [commit]
-  - repo: https://github.com/asottile/blacken-docs
-    rev: "1.13.0"
-    hooks:
-      - id: blacken-docs
-        additional_dependencies: [black==23.1.0]
-
-  - repo: https://github.com/humitos/mirrors-autoflake
-    rev: 969779bb7df0db22f5ca47199863fc057f21a96c
-    hooks:
-      - id: autoflake
+      - id: check-toml
         stages: [commit]
-        args: [--remove-all-unused-imports, --ignore-init-module-imports]
+      - id: check-json
+        stages: [commit]
 
-  - repo: https://github.com/psf/black
-    rev: "23.1.0"
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
     hooks:
-      - id: black
-        language_version: python3
+      - id: ruff
+        args: [--fix]
+        stages: [commit]
+      - id: ruff-format
         stages: [commit]
 
   - repo: https://github.com/PyCQA/bandit
-    rev: "1.7.5"
+    rev: "1.8.0"
     hooks:
       - id: bandit
+        args: ["-c", "pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]
         exclude: ^tests/
-
 
   - repo: local
     hooks:
-      - id: system
-        name: PyLint
-        entry: poetry run pylint -j 0
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
         language: system
-        files: \.py$
+        types: [python]
         stages: [commit]
-        exclude: ^tests/
+        pass_filenames: false
 
-      - id: system
-        name: PyTest
-        entry: poetry run pytest
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
         language: system
         pass_filenames: false
         stages: [push]

@@ -1,29 +1,30 @@
-[tool.poetry]
-authors = ["{{cookiecutter.author}}"]
-description = "{{cookiecutter.description}}"
-license = "{{cookiecutter.license}}"
+[project]
 name = "{{cookiecutter.directory_name}}"
 version = "{{cookiecutter.version}}"
+description = "{{cookiecutter.description}}"
+authors = [
+    {name = "{{cookiecutter.author}}"}
+]
+license = {text = "{{cookiecutter.license}}"}
+requires-python = ">={{cookiecutter.python_version}}"
+dependencies = []
 
-[tool.poetry.dependencies]
-python = "^3.11"
-
-[tool.poetry.dev-dependencies]
-bandit = "^1.7.5"
-ruff = "^0.0.270"
-black = "^23.3.0"
-ipython = "^8.13.2"
-pdbpp = "^0.10.3"
-pylint = "^2.17.4"
-pytest = "^7.3.1"
-pytest-cov = "^4.1.0"
-pytest-xdist = "^3.3.1"
-pytest-randomly = "^3.12.0"
-
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pyright>=1.1.390",
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-xdist>=3.6.0",
+    "pytest-randomly>=3.15.0",
+    "bandit[toml]>=1.8.0",
+    "ipython>=8.30.0",
+    "pdbpp>=0.10.3",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 
 [tool.pytest.ini_options]
@@ -32,10 +33,59 @@ addopts = """
     --cov={{cookiecutter.pkg_name}}
     --cov-report term-missing:skip-covered
     --doctest-modules
-    -n 4
+    -n auto
 """
+minversion = "8.0"
+testpaths = ["tests"]
 
-minversion = "6.0"
-testpaths = [
-  "tests",
+[tool.ruff]
+target-version = "py{{cookiecutter.python_version | replace('.', '')}}"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "PTH", # flake8-use-pathlib
+    "ERA", # eradicate
+    "PL",  # pylint
+    "TRY", # tryceratops
+    "RUF", # ruff-specific
 ]
+ignore = [
+    "E501",   # line too long, handled by formatter
+    "PLR0913", # too many arguments
+    "PLR0915", # too many statements
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["PLR2004", "S101", "TID252"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.pyright]
+include = ["{{cookiecutter.pkg_name}}", "tests"]
+exclude = ["**/__pycache__"]
+reportMissingTypeStubs = false
+reportUnknownParameterType = false
+reportUnknownArgumentType = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+pythonVersion = "{{cookiecutter.python_version}}"
+typeCheckingMode = "strict"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]

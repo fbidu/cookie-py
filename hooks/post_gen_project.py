@@ -2,78 +2,110 @@
 Commands that are executed by Cookiecutter
 after a project is generated
 """
-import logging
 import json
+import logging
 import pathlib
 import subprocess
-import os
+import sys
+from pathlib import Path
 
 
 def init_git():
-    """
-    Initializes a git repo in the newly created folder
-    """
-    os.system("git init")
+    """Initialize a git repo in the newly created folder"""
+    subprocess.run(["git", "init"], check=True)
+
+
+def install_dependencies():
+    """Install all the dependencies using uv"""
+    subprocess.run(["uv", "sync", "--dev"], check=True)
 
 
 def install_pre_commit():
-    """
-    Installs the git hooks through Pre-Commit
-    """
-    os.system("pre-commit install --install-hooks")
-    os.system("pre-commit install -t pre-push")
-
-
-def instal_poetry_dependencies():
-    """
-    Installs all the dependencies defined in poetry
-    """
-    os.system("poetry install")
+    """Install the git hooks through pre-commit"""
+    subprocess.run(["uv", "run", "pre-commit", "install", "--install-hooks"], check=True)
+    subprocess.run(["uv", "run", "pre-commit", "install", "-t", "pre-push"], check=True)
 
 
 def set_vscode_python_path():
     """
-    Sets VSCode's `python.pythonPath` to the
-    current interpreter managed by Poetry
+    Sets VSCode's python.defaultInterpreterPath to the
+    current interpreter managed by uv
     """
-    result = subprocess.run(
-        ["poetry", "run", "which", "python"], stdout=subprocess.PIPE, check=True
-    )
-    python_path = result.stdout.decode("utf-8")[:-1]
-
-    settings_path = pathlib.Path(".vscode/settings.json")
-
-    if not settings_path.is_file():
-        logging.warning(".vscode/settings.json not found. Skipping pythonPath setting.")
+    try:
+        result = subprocess.run(
+            ["uv", "run", "which", "python"], 
+            stdout=subprocess.PIPE, 
+            check=True,
+            text=True
+        )
+        python_path = result.stdout.strip()
+    except subprocess.CalledProcessError:
+        logging.warning("Could not determine Python path. Skipping VSCode setting.")
         return
 
-    settings = json.load(open(settings_path))
+    settings_path = Path(".vscode/settings.json")
+    
+    if not settings_path.parent.exists():
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if "python.pythonPath" in settings:
+    if settings_path.is_file():
+        with settings_path.open() as f:
+            settings = json.load(f)
+    else:
+        settings = {}
+
+    if "python.defaultInterpreterPath" in settings:
         logging.warning(
-            "There already is a 'pythonPath' entry. Skipping pythonPath setting."
+            "There already is a 'defaultInterpreterPath' entry. Skipping Python path setting."
         )
+        return
 
-    settings["python.pythonPath"] = python_path
+    settings["python.defaultInterpreterPath"] = python_path
 
-    json.dump(settings, open(settings_path, "wt"), indent=4, sort_keys=True)
+    with settings_path.open("w") as f:
+        json.dump(settings, f, indent=4, sort_keys=True)
 
 
 def run_pre_commit_hooks():
-    """
-    Does an initial run of all pre-commit hooks
-    """
-    os.system("git add . && pre-commit run --all-files > /dev/null")
+    """Run an initial pass of all pre-commit hooks"""
+    subprocess.run(["git", "add", "."], check=True)
+    subprocess.run(
+        ["uv", "run", "pre-commit", "run", "--all-files"], 
+        check=False  # Don't fail if hooks make changes
+    )
 
 
 def initial_commit():
-    os.system("git add . && git commit -m 'Initial commit' && git branch -M main")
+    """Create initial commit and set main branch"""
+    subprocess.run(["git", "add", "."], check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"], 
+        check=True
+    )
+    subprocess.run(["git", "branch", "-M", "main"], check=True)
+
+
+def main():
+    """Main execution function"""
+    try:
+        logging.basicConfig(level=logging.INFO)
+        
+        init_git()
+        install_dependencies()
+        install_pre_commit()
+        set_vscode_python_path()
+        run_pre_commit_hooks()
+        initial_commit()
+        
+        print("✅ Project setup completed successfully!")
+        
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Setup failed: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    init_git()
-    instal_poetry_dependencies()
-    install_pre_commit()
-    set_vscode_python_path()
-    run_pre_commit_hooks()
-    initial_commit()
+    main()
