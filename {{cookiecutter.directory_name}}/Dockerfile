@@ -1,79 +1,71 @@
-# Based on Michael Oliver's image from
-# https://github.com/python-poetry/poetry/issues/1879#issuecomment-592133519
+# Modern Python Dockerfile using uv
+# Based on uv's official Docker guidance: https://docs.astral.sh/uv/guides/integration/docker/
 
-FROM python:3.11-slim as python-base
+FROM python:{{cookiecutter.python_version}}-slim as python-base
 
-# python
+# Python configuration
 ENV PYTHONUNBUFFERED=1 \
-    # prevents python creating .pyc files
     PYTHONDONTWRITEBYTECODE=1 \
-    \
-    # pip
     PIP_NO_CACHE_DIR=off \
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100 \
-    \
-    # poetry
-    # https://python-poetry.org/docs/configuration/#using-environment-variables
-    POETRY_VERSION=1.5.0 \
-    # make poetry install to this location
-    POETRY_HOME="/opt/poetry" \
-    # make poetry create the virtual environment in the project's root
-    # it gets named `.venv`
-    POETRY_VIRTUALENVS_IN_PROJECT=true \
-    # do not ask any interactive question
-    POETRY_NO_INTERACTION=1 \
-    \
-    # paths
-    # this is where our requirements + virtual environment will live
-    PYSETUP_PATH="/opt/pysetup" \
-    VENV_PATH="/opt/pysetup/.venv"
+    PIP_DISABLE_PIP_VERSION_CHECK=on
 
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# prepend poetry and venv to path
-ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
+# `builder` stage - install dependencies
+FROM python-base as builder
 
+# Install system dependencies for building Python packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# `builder-base` stage is used to build deps + create our virtual environment
-FROM python-base as builder-base
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y \
-    # deps for installing poetry
-    curl \
-    # deps for building python deps
-    build-essential
+# Set working directory
+WORKDIR /app
 
-# install poetry - respects $POETRY_VERSION & $POETRY_HOME
-RUN curl -sSL https://raw.githubusercontent.com/sdispater/poetry/1.1.13/get-poetry.py | python
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
 
-# copy project requirement files here to ensure they will be cached.
-WORKDIR $PYSETUP_PATH
-COPY poetry.lock pyproject.toml ./
+# Install dependencies in a virtual environment
+RUN uv sync --frozen --no-dev
 
-# install runtime deps - uses $POETRY_VIRTUALENVS_IN_PROJECT internally
-RUN poetry install --no-dev
-
-# `development` image is used during development / testing
+# `development` stage - includes dev dependencies and tools
 FROM python-base as development
-WORKDIR $PYSETUP_PATH
 
-# copy in our built poetry + venv
-COPY --from=builder-base $POETRY_HOME $POETRY_HOME
-COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
+# Install system dependencies that might be needed for development
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
-# quicker install as runtime deps are already installed
-RUN poetry install
+WORKDIR /app
 
-# will become mountpoint of our code
-WORKDIR /{{cookiecutter.directory_name}}
+# Copy the virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
 
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
 
-CMD ["ipython"]
+# Install dev dependencies
+RUN uv sync --frozen
 
-# `production` image used for runtime
+# Make sure we use the virtual environment
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Default command for development
+CMD ["uv", "run", "ipython"]
+
+# `production` stage - minimal runtime image
 FROM python-base as production
-COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
-COPY . /{{cookiecutter.directory_name}}
-WORKDIR /{{cookiecutter.directory_name}}
 
-CMD ["python", "{{cookiecutter.pkg_name}}"]
+# Copy the virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy the application code
+COPY . /app
+WORKDIR /app
+
+# Make sure we use the virtual environment
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Run the application
+CMD ["python", "-m", "{{cookiecutter.pkg_name}}"]

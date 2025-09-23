@@ -13,22 +13,38 @@
 
 The requirements are
 
-- Python >= 3.8
-- [Poetry](https://python-poetry.org/docs/#installation)
+- Python >= {{cookiecutter.python_version}}
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
 
 1. Clone this repo
-2. Run `poetry install`
+2. Run `uv sync --dev` (or `pip install -e .` if using pip)
 3. 🎆
 
 ## Development
 
-`poetry install` installs the dependencies for development. You'll also need
-[`pre-commit`](https://pre-commit.com/) available in your machine. After clonning,
-run
+This project uses modern Python tooling:
 
-```sh
-pre-commit install -t pre-commit -t pre-push
-```
+- **[uv](https://docs.astral.sh/uv/)** for fast dependency management and virtual environments
+- **[ruff](https://docs.astral.sh/ruff/)** for linting and code formatting
+- **[pyright](https://github.com/microsoft/pyright)** for type checking
+- **[pytest](https://docs.pytest.org/)** for testing
+- **[pre-commit](https://pre-commit.com/)** for git hooks
+
+### Setup
+
+1. Install [uv](https://docs.astral.sh/uv/) and [pre-commit](https://pre-commit.com/) globally
+2. Clone this repository
+3. Run `uv sync --dev` to install dependencies
+4. Run `pre-commit install --install-hooks` to setup git hooks
+5. Run `pre-commit install -t pre-push` to setup push hooks
+
+### Commands
+
+- `uv run pytest` - Run tests
+- `uv run ruff check .` - Run linting
+- `uv run ruff format .` - Format code
+- `pyright` - Run type checking
+- `pre-commit run --all-files` - Run all pre-commit hooks
 
 {% endif %}
 {% if cookiecutter.language == "Both" or cookiecutter.language == "PT-BR" %}
@@ -36,21 +52,37 @@ pre-commit install -t pre-commit -t pre-push
 
 Os requerimentos são
 
-- Python >= 3.8
-- [Poetry](https://python-poetry.org/docs/#installation)
+- Python >= {{cookiecutter.python_version}}
+- [uv](https://docs.astral.sh/uv/) (recomendado) ou pip
 
 1. Clone esse repositório
-2. Execute `poetry install`
+2. Execute `uv sync --dev` (ou `pip install -e .` se usando pip)
 3. 🎆
 
 ## Desenvolvimento
 
-`poetry install` instala as dependências necessárias. Você também precisará do
-[`pre-commit`](https://pre-commit.com/) disponível em sua máquina. Depois de
-clonar o projeto, execute
+Este projeto usa ferramentas modernas do Python:
 
-```sh
-pre-commit install -t pre-commit -t pre-push
-```
+- **[uv](https://docs.astral.sh/uv/)** para gerenciamento rápido de dependências e ambientes virtuais
+- **[ruff](https://docs.astral.sh/ruff/)** para linting e formatação de código
+- **[pyright](https://github.com/microsoft/pyright)** para verificação de tipos
+- **[pytest](https://docs.pytest.org/)** para testes
+- **[pre-commit](https://pre-commit.com/)** para git hooks
+
+### Configuração
+
+1. Instale [uv](https://docs.astral.sh/uv/) e [pre-commit](https://pre-commit.com/) globalmente
+2. Clone este repositório
+3. Execute `uv sync --dev` para instalar dependências
+4. Execute `pre-commit install --install-hooks` para configurar git hooks
+5. Execute `pre-commit install -t pre-push` para configurar push hooks
+
+### Comandos
+
+- `uv run pytest` - Executar testes
+- `uv run ruff check .` - Executar linting
+- `uv run ruff format .` - Formatar código
+- `pyright` - Executar verificação de tipos
+- `pre-commit run --all-files` - Executar todos os pre-commit hooks
 
 {% endif %}
