@@ -22,8 +22,13 @@ def install_dependencies():
 
 def install_pre_commit():
     """Install the git hooks through pre-commit"""
-    subprocess.run(["uv", "run", "pre-commit", "install", "--install-hooks"], check=True)
-    subprocess.run(["uv", "run", "pre-commit", "install", "-t", "pre-push"], check=True)
+    try:
+        subprocess.run(["pre-commit", "install", "--install-hooks"], check=True)
+        subprocess.run(["pre-commit", "install", "-t", "pre-push"], check=True)
+    except subprocess.CalledProcessError as e:
+        logging.warning(f"Pre-commit installation failed: {e}. Continuing without pre-commit hooks.")
+        return False
+    return True
 
 
 def set_vscode_python_path():
@@ -68,11 +73,22 @@ def set_vscode_python_path():
 
 def run_pre_commit_hooks():
     """Run an initial pass of all pre-commit hooks"""
-    subprocess.run(["git", "add", "."], check=True)
-    subprocess.run(
-        ["uv", "run", "pre-commit", "run", "--all-files"], 
-        check=False  # Don't fail if hooks make changes
-    )
+    try:
+        subprocess.run(["git", "add", "."], check=True)
+        result = subprocess.run(
+            ["pre-commit", "run", "--all-files"], 
+            check=False,  # Don't fail if hooks make changes
+            capture_output=True,
+            text=True
+        )
+        # Pre-commit returns 1 if it made changes, which is fine
+        if result.returncode > 1:
+            logging.warning(f"Pre-commit hooks had errors (exit code {result.returncode}): {result.stderr}")
+            return False
+    except subprocess.CalledProcessError as e:
+        logging.warning(f"Pre-commit hooks failed: {e}. Continuing without running hooks.")
+        return False
+    return True
 
 
 def initial_commit():
@@ -92,9 +108,14 @@ def main():
         
         init_git()
         install_dependencies()
-        install_pre_commit()
+        precommit_success = install_pre_commit()
         set_vscode_python_path()
-        run_pre_commit_hooks()
+        
+        if precommit_success:
+            run_pre_commit_hooks()
+        else:
+            logging.warning("Skipping pre-commit hooks due to installation failure.")
+            
         initial_commit()
         
         print("✅ Project setup completed successfully!")

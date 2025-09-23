@@ -25,18 +25,14 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@v3
 
+    - name: Install cookiecutter
+      run: uv tool install cookiecutter
+
     - name: Install dependencies
       run: uv sync --dev
 
-    - name: Run template structure tests
-      run: uv run pytest tests/test_template_validation.py -v
-
-    - name: Run cookiecutter generation tests (fast)
-      run: uv run pytest tests/test_cookiecutter_generation.py -v -m "not slow"
-
-    - name: Run cookiecutter generation tests (slow)
-      if: matrix.python-version == '3.12'  # Only run slow tests on one Python version
-      run: uv run pytest tests/test_cookiecutter_generation.py -v -m "slow"
+    - name: Run integration tests
+      run: uv run pytest tests/test_cookiecutter_integration.py -v
 
   test-docker:
     runs-on: ubuntu-latest

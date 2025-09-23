@@ -3,10 +3,17 @@ FROM python:3.12-slim
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv and cookiecutter
-RUN pip install --no-cache-dir uv cookiecutter
+# Install uv, cookiecutter, pre-commit, and pyright
+RUN pip install --no-cache-dir uv cookiecutter pre-commit pyright
+
+# Set git config for Docker environment
+RUN git config --global user.email "test@example.com" && \
+    git config --global user.name "Test User" && \
+    git config --global init.defaultBranch main
 
 # Set working directory
 WORKDIR /workspace
@@ -14,33 +21,8 @@ WORKDIR /workspace
 # Copy the cookiecutter template
 COPY . /template
 
-# Create a test script
-RUN echo '#!/bin/bash\n\
-set -e\n\
-echo "Testing cookiecutter template..."\n\
-\n\
-# Generate project from template using non-interactive mode\n\
-cookiecutter /template --no-input --overwrite-if-exists\n\
-\n\
-# Navigate to the generated project\n\
-cd my-awesome-project\n\
-\n\
-echo "Installing dependencies with uv..."\n\
-uv sync --dev\n\
-\n\
-echo "Running ruff check..."\n\
-uv run ruff check .\n\
-\n\
-echo "Running ruff format check..."\n\
-uv run ruff format --check .\n\
-\n\
-echo "Running pyright..."\n\
-uv run pyright\n\
-\n\
-echo "Running tests..."\n\
-uv run pytest\n\
-\n\
-echo "✅ All tests passed! Cookiecutter template works correctly."\n\
-' > /test-template.sh && chmod +x /test-template.sh
+# Copy and setup the test script
+COPY test-template.sh /test-template.sh
+RUN chmod +x /test-template.sh
 
 CMD ["/test-template.sh"]
