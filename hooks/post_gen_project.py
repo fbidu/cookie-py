@@ -2,9 +2,9 @@
 Commands that are executed by Cookiecutter
 after a project is generated
 """
+
 import json
 import logging
-import pathlib
 import subprocess
 import sys
 from pathlib import Path
@@ -26,7 +26,9 @@ def install_pre_commit():
         subprocess.run(["pre-commit", "install", "--install-hooks"], check=True)
         subprocess.run(["pre-commit", "install", "-t", "pre-push"], check=True)
     except subprocess.CalledProcessError as e:
-        logging.warning(f"Pre-commit installation failed: {e}. Continuing without pre-commit hooks.")
+        logging.warning(
+            f"Pre-commit installation failed: {e}. Continuing without pre-commit hooks."
+        )
         return False
     return True
 
@@ -38,10 +40,7 @@ def set_vscode_python_path():
     """
     try:
         result = subprocess.run(
-            ["uv", "run", "which", "python"], 
-            stdout=subprocess.PIPE, 
-            check=True,
-            text=True
+            ["uv", "run", "which", "python"], stdout=subprocess.PIPE, check=True, text=True
         )
         python_path = result.stdout.strip()
     except subprocess.CalledProcessError:
@@ -49,7 +48,7 @@ def set_vscode_python_path():
         return
 
     settings_path = Path(".vscode/settings.json")
-    
+
     if not settings_path.parent.exists():
         settings_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -76,14 +75,16 @@ def run_pre_commit_hooks():
     try:
         subprocess.run(["git", "add", "."], check=True)
         result = subprocess.run(
-            ["pre-commit", "run", "--all-files"], 
+            ["pre-commit", "run", "--all-files"],
             check=False,  # Don't fail if hooks make changes
             capture_output=True,
-            text=True
+            text=True,
         )
         # Pre-commit returns 1 if it made changes, which is fine
         if result.returncode > 1:
-            logging.warning(f"Pre-commit hooks had errors (exit code {result.returncode}): {result.stderr}")
+            logging.warning(
+                f"Pre-commit hooks had errors (exit code {result.returncode}): {result.stderr}"
+            )
             return False
     except subprocess.CalledProcessError as e:
         logging.warning(f"Pre-commit hooks failed: {e}. Continuing without running hooks.")
@@ -94,10 +95,7 @@ def run_pre_commit_hooks():
 def initial_commit():
     """Create initial commit and set main branch"""
     subprocess.run(["git", "add", "."], check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial commit"], 
-        check=True
-    )
+    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True)
     subprocess.run(["git", "branch", "-M", "main"], check=True)
 
 
@@ -105,21 +103,21 @@ def main():
     """Main execution function"""
     try:
         logging.basicConfig(level=logging.INFO)
-        
+
         init_git()
         install_dependencies()
         precommit_success = install_pre_commit()
         set_vscode_python_path()
-        
+
         if precommit_success:
             run_pre_commit_hooks()
         else:
             logging.warning("Skipping pre-commit hooks due to installation failure.")
-            
+
         initial_commit()
-        
+
         print("✅ Project setup completed successfully!")
-        
+
     except subprocess.CalledProcessError as e:
         logging.error(f"Setup failed: {e}")
         sys.exit(1)

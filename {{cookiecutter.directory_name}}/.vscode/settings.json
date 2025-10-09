@@ -15,10 +15,10 @@
   "python.testing.nosetestsEnabled": false,
   "python.testing.pytestArgs": ["tests", "--doctest-modules"],
   "python.testing.pytestEnabled": true,
-  "python.testing.unittestEnabled": false,
+  "python.testing.unittestEnabled": false
 
   {% if cookiecutter.enable_github_copilot == "no" -%}
-  "github.copilot.enable": {
+  ,"github.copilot.enable": {
     "*": false,
     "plaintext": false,
     "markdown": false,
