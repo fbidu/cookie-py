@@ -8,8 +8,5 @@
     "license": "MIT",
     "python_version": "3.12",
     "language": ["EN", "PT-BR", "Both"],
-    "enable_github_copilot": ["yes", "no"],
-    "_copy_without_render": [
-        "*.github/workflows"
-    ]
+    "enable_github_copilot": ["yes", "no"]
 }

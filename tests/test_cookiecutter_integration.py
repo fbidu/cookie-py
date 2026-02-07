@@ -221,3 +221,31 @@ class TestCookiecutterIntegration:
         # Check that pre-commit ran successfully (even if it made fixes)
         assert "Passed" in result.stdout or "Failed" in result.stdout, \
             f"Pre-commit output unexpected: {result.stdout}"
+
+    def test_workflow_files_rendered(self, temp_dir, template_dir):
+        """Test that workflow files have cookiecutter variables rendered."""
+        # Arrange
+        subprocess.run(
+            ["cookiecutter", str(template_dir), "--no-input", "--output-dir", str(temp_dir)],
+            capture_output=True,
+            cwd=temp_dir,
+        )
+        project_dir = temp_dir / "my-awesome-project"
+
+        # Act - Read workflow files
+        test_yml = (project_dir / ".github/workflows/test.yml").read_text()
+        precommit_yml = (project_dir / ".github/workflows/pre-commit.yml").read_text()
+
+        # Assert - Cookiecutter variables should be rendered
+        assert "{{cookiecutter." not in test_yml, \
+            "Cookiecutter variables not rendered in test.yml"
+        assert "{{cookiecutter." not in precommit_yml, \
+            "Cookiecutter variables not rendered in pre-commit.yml"
+
+        # Assert - Default python_version (3.12) should appear
+        assert "3.12" in test_yml, "Default python_version not rendered in test.yml"
+        assert "3.12" in precommit_yml, "Default python_version not rendered in pre-commit.yml"
+
+        # Assert - GitHub Actions expressions should be preserved
+        assert "${{ matrix.python-version }}" in test_yml, \
+            "GitHub Actions expressions were incorrectly rendered in test.yml"
