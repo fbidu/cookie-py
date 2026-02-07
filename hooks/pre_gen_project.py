@@ -33,8 +33,8 @@ def command_exists(command):
     # If we're running Python 2
     if sys.version_info < (3,):
 
-        from subprocess import Popen
         import os
+        from subprocess import Popen
 
         devnull = open(os.devnull)
         try:

@@ -113,7 +113,7 @@ name = "cookie-py"
 version = "2.0.0"
 source = { editable = "." }
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "cookiecutter" },
     { name = "pyright" },
@@ -124,15 +124,16 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "cookiecutter", marker = "extra == 'dev'", specifier = ">=2.6.0" },
-    { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.390" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0.0" },
-    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "cookiecutter", specifier = ">=2.6.0" },
+    { name = "pyright", specifier = ">=1.1.390" },
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
+    { name = "ruff", specifier = ">=0.8.0" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "cookiecutter"

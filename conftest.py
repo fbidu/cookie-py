@@ -1,6 +1,5 @@
 """Test configuration for cookiecutter template tests."""
 
-import pytest
 
 
 def pytest_configure(config):
