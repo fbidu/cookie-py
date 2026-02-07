@@ -249,3 +249,22 @@ class TestCookiecutterIntegration:
         # Assert - GitHub Actions expressions should be preserved
         assert "${{ matrix.python-version }}" in test_yml, \
             "GitHub Actions expressions were incorrectly rendered in test.yml"
+
+    def test_license_format_is_spdx_string(self, temp_dir, template_dir):
+        """Test that license field uses modern SPDX string format."""
+        # Arrange
+        subprocess.run(
+            ["cookiecutter", str(template_dir), "--no-input", "--output-dir", str(temp_dir)],
+            capture_output=True,
+            cwd=temp_dir,
+        )
+        project_dir = temp_dir / "my-awesome-project"
+
+        # Act - Read pyproject.toml
+        pyproject = (project_dir / "pyproject.toml").read_text()
+
+        # Assert - Should use plain SPDX string format
+        assert 'license = "MIT"' in pyproject, \
+            "License should be a plain SPDX string"
+        assert "{ text =" not in pyproject, \
+            "License should not use deprecated table format"
