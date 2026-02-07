@@ -13,14 +13,6 @@ UV_INSTALL_INSTRUCTIONS = """
 *-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
 """
 
-PRE_COMMIT_INSTALL_INSTRUCTIONS = """
-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
-| pre-commit is not installed!                                                |
-| Please refer to https://pre-commit.com/ for instructions.                   |
-| For most systems: `pip install pre-commit` or `uv tool install pre-commit`  |
-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*
-"""
-
 
 def command_exists(command):
     """
@@ -32,13 +24,7 @@ def command_exists(command):
 
 
 if __name__ == "__main__":
-    exit_messages = []
-
+    # Only check for uv since it's required for project generation
+    # pre-commit is optional and handled gracefully in post_gen_project.py
     if not command_exists("uv"):
-        exit_messages.append(UV_INSTALL_INSTRUCTIONS)
-
-    if not command_exists("pre-commit"):
-        exit_messages.append(PRE_COMMIT_INSTALL_INSTRUCTIONS)
-
-    if exit_messages:
-        sys.exit("\n".join(exit_messages))
+        sys.exit(UV_INSTALL_INSTRUCTIONS)
