@@ -9,7 +9,7 @@ license = {text = "GPL-3.0"}
 requires-python = ">=3.12"
 dependencies = []
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "cookiecutter>=2.6.0",
     "pytest>=8.0.0",
