@@ -23,8 +23,14 @@ def install_dependencies():
 def install_pre_commit():
     """Install the git hooks through pre-commit"""
     try:
-        subprocess.run(["pre-commit", "install", "--install-hooks"], check=True)
-        subprocess.run(["pre-commit", "install", "-t", "pre-push"], check=True)
+        subprocess.run(["uv", "run", "pre-commit", "install", "--install-hooks"], check=True)
+        subprocess.run(["uv", "run", "pre-commit", "install", "-t", "pre-push"], check=True)
+    except FileNotFoundError as e:
+        logging.warning(
+            f"Pre-commit installation skipped because command was not found: {e}. "
+            "Continuing without pre-commit hooks."
+        )
+        return False
     except subprocess.CalledProcessError as e:
         logging.warning(
             f"Pre-commit installation failed: {e}. Continuing without pre-commit hooks."
@@ -96,7 +102,7 @@ def run_pre_commit_hooks():
     try:
         subprocess.run(["git", "add", "."], check=True)
         result = subprocess.run(
-            ["pre-commit", "run", "--all-files"],
+            ["uv", "run", "pre-commit", "run", "--all-files"],
             check=False,  # Don't fail if hooks make changes
             capture_output=True,
             text=True,
@@ -107,6 +113,9 @@ def run_pre_commit_hooks():
                 f"Pre-commit hooks had errors (exit code {result.returncode}): {result.stderr}"
             )
             return False
+    except FileNotFoundError as e:
+        logging.warning(f"Pre-commit hooks skipped because command was not found: {e}.")
+        return False
     except subprocess.CalledProcessError as e:
         logging.warning(f"Pre-commit hooks failed: {e}. Continuing without running hooks.")
         return False

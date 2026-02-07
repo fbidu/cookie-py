@@ -207,7 +207,7 @@ class TestCookiecutterIntegration:
 
         # Act - Run pre-commit on all files
         result = subprocess.run(
-            ["pre-commit", "run", "--all-files"],
+            ["uv", "run", "pre-commit", "run", "--all-files"],
             capture_output=True,
             text=True,
             cwd=project_dir,
