@@ -28,8 +28,9 @@ Sinta-se livre para usar, forkear e modificar a vontade!
 
 1. Instale o [uv](https://docs.astral.sh/uv/getting-started/installation/)
 2. Instale o [Cookiecutter](https://cookiecutter.readthedocs.io/en/latest/installation.html)
-3. Execute `cookiecutter gh:fbidu/cookie-py`
-4. O seu terminal irá te perguntar tudo o que precisar!
+3. Instale o [pre-commit](https://pre-commit.com/#install)
+4. Execute `cookiecutter gh:fbidu/cookie-py`
+5. O seu terminal irá te perguntar tudo o que precisar!
 
 ### Itens Inclusos
 
@@ -70,8 +71,9 @@ Feel free to use, fork and modify at will!
 
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 2. Install [Cookiecutter](https://cookiecutter.readthedocs.io/en/latest/installation.html)
-3. Run `cookiecutter gh:fbidu/cookie-py`
-4. Your terminal will ask you everything it needs!
+3. Install [pre-commit](https://pre-commit.com/#install)
+4. Run `cookiecutter gh:fbidu/cookie-py`
+5. Your terminal will ask you everything it needs!
 
 ### Batteries Included
 
