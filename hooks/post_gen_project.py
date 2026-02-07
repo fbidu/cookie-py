@@ -70,6 +70,27 @@ def set_vscode_python_path():
         json.dump(settings, f, indent=4, sort_keys=True)
 
 
+def setup_spec_kit():
+    """Run specify init to set up spec-driven development scaffolding."""
+    ai_agent = "{{ cookiecutter.spec_kit_ai_agent }}"
+    try:
+        subprocess.run(
+            ["specify", "init", "--here", "--ai", ai_agent, "--no-git", "--force"],
+            check=True,
+        )
+    except FileNotFoundError:
+        logging.warning(
+            "specify CLI not found. Skipping Spec Kit setup. "
+            "Install with: uv tool install specify-cli "
+            "--from git+https://github.com/github/spec-kit.git"
+        )
+        return False
+    except subprocess.CalledProcessError as e:
+        logging.warning(f"Spec Kit setup failed: {e}. Continuing without it.")
+        return False
+    return True
+
+
 def run_pre_commit_hooks():
     """Run an initial pass of all pre-commit hooks"""
     try:
@@ -108,6 +129,9 @@ def main():
         install_dependencies()
         precommit_success = install_pre_commit()
         set_vscode_python_path()
+
+        if "{{ cookiecutter.enable_spec_kit }}" == "yes":
+            setup_spec_kit()
 
         if precommit_success:
             run_pre_commit_hooks()
