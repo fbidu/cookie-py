@@ -201,10 +201,10 @@ class TestCookiecutterIntegration:
             cwd=temp_dir,
         )
         project_dir = temp_dir / "my-awesome-project"
-        
+
         # Install dependencies first
         subprocess.run(["uv", "sync", "--dev"], cwd=project_dir)
-        
+
         # Act - Run pre-commit on all files
         result = subprocess.run(
             ["pre-commit", "run", "--all-files"],
@@ -212,12 +212,148 @@ class TestCookiecutterIntegration:
             text=True,
             cwd=project_dir,
         )
-        
+
         # Assert
         # Note: pre-commit may return exit code 1 if it fixes files, but that's expected
         # We mainly care that it doesn't fail completely and produces reasonable output
         assert result.returncode in [0, 1], f"Pre-commit failed unexpectedly: {result.stderr}"
-        
+
         # Check that pre-commit ran successfully (even if it made fixes)
         assert "Passed" in result.stdout or "Failed" in result.stdout, \
             f"Pre-commit output unexpected: {result.stdout}"
+
+    def test_spec_kit_disabled_does_not_create_specify_dir(self, temp_dir, template_dir):
+        """Test that Spec Kit is NOT set up when enable_spec_kit=no."""
+        # Arrange - Generate project with spec-kit disabled (default behavior)
+        result = subprocess.run(
+            [
+                "cookiecutter",
+                str(template_dir),
+                "--no-input",
+                "--output-dir",
+                str(temp_dir),
+                "enable_spec_kit=no",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=temp_dir,
+        )
+        project_dir = temp_dir / "my-awesome-project"
+
+        # Act - Check for .specify directory
+        specify_dir = project_dir / ".specify"
+
+        # Assert - .specify directory should NOT exist
+        assert result.returncode == 0, f"Cookiecutter failed: {result.stderr}"
+        assert not specify_dir.exists(), "Spec Kit directory should not exist when disabled"
+
+    def test_spec_kit_enabled_creates_specify_dir(self, temp_dir, template_dir):
+        """Test that Spec Kit is set up when enable_spec_kit=yes."""
+        # Arrange - Check if specify CLI is available
+        try:
+            subprocess.run(
+                ["specify", "--version"],
+                capture_output=True,
+                check=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            pytest.skip("specify CLI not installed")
+
+        # Act - Generate project with spec-kit enabled
+        result = subprocess.run(
+            [
+                "cookiecutter",
+                str(template_dir),
+                "--no-input",
+                "--output-dir",
+                str(temp_dir),
+                "enable_spec_kit=yes",
+                "spec_kit_ai_agent=claude",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=temp_dir,
+        )
+        project_dir = temp_dir / "my-awesome-project"
+        specify_dir = project_dir / ".specify"
+
+        # Assert - .specify directory should exist with expected subdirectories
+        assert result.returncode == 0, f"Cookiecutter failed: {result.stderr}"
+        assert specify_dir.exists(), "Spec Kit directory should exist when enabled"
+        assert specify_dir.is_dir(), ".specify should be a directory"
+
+    def test_spec_kit_preserves_claude_md(self, temp_dir, template_dir):
+        """Test that CLAUDE.md is preserved when Spec Kit is enabled."""
+        # Arrange - Check if specify CLI is available
+        try:
+            subprocess.run(
+                ["specify", "--version"],
+                capture_output=True,
+                check=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            pytest.skip("specify CLI not installed")
+
+        # Act - Generate project with spec-kit enabled
+        result = subprocess.run(
+            [
+                "cookiecutter",
+                str(template_dir),
+                "--no-input",
+                "--output-dir",
+                str(temp_dir),
+                "enable_spec_kit=yes",
+                "spec_kit_ai_agent=claude",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=temp_dir,
+        )
+        project_dir = temp_dir / "my-awesome-project"
+        claude_md = project_dir / "CLAUDE.md"
+
+        # Assert - CLAUDE.md should still exist at project root
+        assert result.returncode == 0, f"Cookiecutter failed: {result.stderr}"
+        assert claude_md.exists(), "CLAUDE.md should exist at project root"
+        assert claude_md.is_file(), "CLAUDE.md should be a file"
+
+    def test_spec_kit_files_in_initial_commit(self, temp_dir, template_dir):
+        """Test that .specify directory is tracked in the initial git commit."""
+        # Arrange - Check if specify CLI is available
+        try:
+            subprocess.run(
+                ["specify", "--version"],
+                capture_output=True,
+                check=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            pytest.skip("specify CLI not installed")
+
+        # Act - Generate project with spec-kit enabled
+        result = subprocess.run(
+            [
+                "cookiecutter",
+                str(template_dir),
+                "--no-input",
+                "--output-dir",
+                str(temp_dir),
+                "enable_spec_kit=yes",
+                "spec_kit_ai_agent=claude",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=temp_dir,
+        )
+        project_dir = temp_dir / "my-awesome-project"
+
+        # Check git status to see if .specify is tracked
+        git_result = subprocess.run(
+            ["git", "ls-files", ".specify"],
+            capture_output=True,
+            text=True,
+            cwd=project_dir,
+        )
+
+        # Assert - .specify should be tracked by git
+        assert result.returncode == 0, f"Cookiecutter failed: {result.stderr}"
+        assert git_result.stdout.strip(), ".specify directory should be tracked in git"
