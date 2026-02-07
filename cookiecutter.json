@@ -9,6 +9,8 @@
     "python_version": "3.12",
     "language": ["EN", "PT-BR", "Both"],
     "enable_github_copilot": ["yes", "no"],
+    "enable_spec_kit": ["no", "yes"],
+    "spec_kit_ai_agent": ["claude", "copilot", "gemini", "cursor-agent", "codex", "windsurf"],
     "_copy_without_render": [
         "*.github/workflows"
     ]
