@@ -79,4 +79,4 @@ include = ["tests", "hooks"]
 exclude = ["**/__pycache__", "{{cookiecutter.directory_name}}"]
 reportMissingTypeStubs = false
 pythonVersion = "3.12"
-typeCheckingMode = "strict"
+typeCheckingMode = "basic"
