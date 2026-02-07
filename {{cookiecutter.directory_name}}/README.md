@@ -29,6 +29,14 @@ This project uses modern Python tooling:
 - **[pyright](https://github.com/microsoft/pyright)** for type checking
 - **[pytest](https://docs.pytest.org/)** for testing
 - **[pre-commit](https://pre-commit.com/)** for git hooks
+{% if cookiecutter.enable_spec_kit == "yes" %}
+
+### Spec-Driven Development
+
+This project includes [GitHub Spec Kit](https://github.com/github/spec-kit) for spec-driven development. Available commands: `/speckit.constitution`, `/speckit.specify`, `/speckit.plan`, `/speckit.tasks`, `/speckit.implement`
+
+See `.specify/` for configuration.
+{% endif %}
 
 ### Setup
 
@@ -68,6 +76,14 @@ Este projeto usa ferramentas modernas do Python:
 - **[pyright](https://github.com/microsoft/pyright)** para verificação de tipos
 - **[pytest](https://docs.pytest.org/)** para testes
 - **[pre-commit](https://pre-commit.com/)** para git hooks
+{% if cookiecutter.enable_spec_kit == "yes" %}
+
+### Desenvolvimento Orientado por Especificações
+
+Este projeto inclui [GitHub Spec Kit](https://github.com/github/spec-kit) para desenvolvimento orientado por especificações. Comandos disponíveis: `/speckit.constitution`, `/speckit.specify`, `/speckit.plan`, `/speckit.tasks`, `/speckit.implement`
+
+Veja `.specify/` para configuração.
+{% endif %}
 
 ### Configuração
 
