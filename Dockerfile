@@ -3,12 +3,10 @@ FROM python:3.12-slim
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
-    nodejs \
-    npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv, cookiecutter, pre-commit, and pyright
-RUN pip install --no-cache-dir uv cookiecutter pre-commit pyright
+# Install uv, copier, pre-commit, and pyright
+RUN pip install --no-cache-dir uv copier pre-commit pyright
 
 # Set git config for Docker environment
 RUN git config --global user.email "test@example.com" && \
@@ -18,7 +16,7 @@ RUN git config --global user.email "test@example.com" && \
 # Set working directory
 WORKDIR /workspace
 
-# Copy the cookiecutter template
+# Copy the template
 COPY . /template
 
 # Copy and setup the test script

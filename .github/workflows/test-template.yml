@@ -1,4 +1,4 @@
-name: Test Cookiecutter Template
+name: Test Copier Template
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.12', '3.13']
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -25,19 +25,19 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@v3
 
-    - name: Install cookiecutter
-      run: uv tool install cookiecutter
+    - name: Install copier
+      run: uv tool install copier
 
     - name: Install dependencies
       run: uv sync --dev
 
     - name: Run integration tests
-      run: uv run pytest tests/test_cookiecutter_integration.py -v
+      run: uv run pytest tests/test_copier_integration.py -v
 
   test-docker:
     runs-on: ubuntu-latest
     name: Test Template with Docker
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -51,7 +51,7 @@ jobs:
   code-quality:
     runs-on: ubuntu-latest
     name: Code Quality Checks
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4

@@ -1,11 +1,15 @@
 [project]
-name = "{{cookiecutter.directory_name}}"
-version = "{{cookiecutter.version}}"
-description = "{{cookiecutter.description}}"
-authors = [{ name = "{{cookiecutter.author}}" }]
-license = { text = "{{cookiecutter.license}}" }
-requires-python = ">={{cookiecutter.python_version}}"
+name = "{{ directory_name }}"
+version = "{{ version }}"
+description = "{{ description }}"
+authors = [{ name = "{{ author }}" }]
+license = { text = "{{ license }}" }
+requires-python = ">={{ python_version }}"
 dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
@@ -23,7 +27,7 @@ dev = [
 [tool.pytest.ini_options]
 addopts = """
     -ra -vv
-    --cov={{cookiecutter.pkg_name}}
+    --cov={{ pkg_name }}
     --cov-report term-missing:skip-covered
     --doctest-modules
     -n auto
@@ -32,7 +36,7 @@ minversion = "8.0"
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py{{cookiecutter.python_version | replace('.', '')}}"
+target-version = "py{{ python_version | replace('.', '') }}"
 line-length = 100
 
 [tool.ruff.lint]
@@ -49,10 +53,9 @@ select = [
     "TCH", # flake8-type-checking
     "PTH", # flake8-use-pathlib
     "ERA", # eradicate
-    "PL",  # pylint
+    "PL",  # pylint (includes PLR, PLC, PLE, PLW)
     "TRY", # tryceratops
     "RUF", # ruff-specific
-    "PLR",
 ]
 ignore = [
     "E501",    # line too long, handled by formatter
@@ -70,14 +73,14 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.pyright]
-include = ["{{cookiecutter.pkg_name}}", "tests"]
+include = ["{{ pkg_name }}", "tests"]
 exclude = ["**/__pycache__"]
 reportMissingTypeStubs = false
 reportUnknownParameterType = false
 reportUnknownArgumentType = false
 reportUnknownMemberType = false
 reportUnknownVariableType = false
-pythonVersion = "{{cookiecutter.python_version}}"
+pythonVersion = "{{ python_version }}"
 typeCheckingMode = "strict"
 
 [tool.bandit]

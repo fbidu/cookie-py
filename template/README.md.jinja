@@ -1,19 +1,19 @@
-<h1 align="center">{{cookiecutter.project_name}}</h1>
+<h1 align="center">{{ project_name }}</h1>
 
 ---
 
 [![](https://img.shields.io/badge/fbidu's%20cookiecutter-gray?style=for-the-badge&logo=cookiecutter)](https://github.com/fbidu/cookie-py)
 <!-- Insert an image/gif/code snippet of the working project -->
 
-{% if cookiecutter.language == "Both" %}
+{% if language == "Both" %}
 [🇧🇷 Descrição em Português](#uso)
 {% endif %}
-{% if cookiecutter.language == "Both" or cookiecutter.language == "EN" %}
+{% if language == "Both" or language == "EN" %}
 ## Usage
 
 The requirements are
 
-- Python >= {{cookiecutter.python_version}}
+- Python >= {{ python_version }}
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 
 1. Clone this repo
@@ -47,12 +47,12 @@ This project uses modern Python tooling:
 - `pre-commit run --all-files` - Run all pre-commit hooks
 
 {% endif %}
-{% if cookiecutter.language == "Both" or cookiecutter.language == "PT-BR" %}
+{% if language == "Both" or language == "PT-BR" %}
 ## Uso
 
 Os requerimentos são
 
-- Python >= {{cookiecutter.python_version}}
+- Python >= {{ python_version }}
 - [uv](https://docs.astral.sh/uv/) (recomendado) ou pip
 
 1. Clone esse repositório

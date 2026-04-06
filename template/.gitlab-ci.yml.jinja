@@ -1,0 +1,74 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+
+# --- Test stage ---
+
+lint:
+  stage: test
+  image: python:{{ python_version }}-slim
+  before_script:
+    - pip install uv
+    - uv sync --dev
+  script:
+    - uv run ruff check .
+    - uv run ruff format --check .
+
+type-check:
+  stage: test
+  image: python:{{ python_version }}-slim
+  before_script:
+    - pip install uv
+    - uv sync --dev
+  script:
+    - uv run pyright
+
+test:
+  stage: test
+  image: python:{{ python_version }}-slim
+  before_script:
+    - pip install uv
+    - uv sync --dev
+  script:
+    - uv run pytest
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+
+# --- Build stage ---
+
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build --target production -t $IMAGE_TAG -t $IMAGE_LATEST .
+    - docker push $IMAGE_TAG
+    - docker push $IMAGE_LATEST
+  only:
+    - main
+    - tags
+
+# --- Deploy stage (Portainer webhook) ---
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      echo "Triggering Portainer stack update..."
+      curl -X POST "$PORTAINER_WEBHOOK_URL" \
+        --fail --silent --show-error
+  only:
+    - main
+  environment:
+    name: production
+  when: manual

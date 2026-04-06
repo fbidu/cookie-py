@@ -1,0 +1,90 @@
+_min_copier_version: "9.1.0"
+_subdirectory: template
+_templates_suffix: .jinja
+
+# Copier tasks (replacing cookiecutter hooks)
+_tasks:
+  - command: >-
+      python {{ _copier_conf.src_path }}/tasks/post_generate.py
+      {% if not enable_github_copilot %}--disable-copilot{% endif %}
+
+# --- Project metadata ---
+
+project_name:
+  type: str
+  help: "What is your project's name?"
+  default: "My Awesome Project"
+
+directory_name:
+  type: str
+  help: "Directory name for the project"
+  default: "{{ project_name | lower | replace(' ', '-') }}"
+
+pkg_name:
+  type: str
+  help: "Python package name"
+  default: "{{ directory_name | replace('-', '_') }}"
+
+description:
+  type: str
+  help: "Short project description"
+  default: "{{ project_name }} is awesome"
+
+author:
+  type: str
+  help: "Author name and email"
+  default: "Felipe 'Bidu' Rodrigues <felipe@felipevr.com>"
+
+version:
+  type: str
+  help: "Initial version"
+  default: "0.1.0"
+
+license:
+  type: str
+  help: "License identifier"
+  default: "MIT"
+
+python_version:
+  type: str
+  help: "Minimum Python version"
+  default: "3.12"
+  choices:
+    - "3.11"
+    - "3.12"
+    - "3.13"
+
+# --- Feature toggles ---
+
+language:
+  type: str
+  help: "README language(s)"
+  default: "EN"
+  choices:
+    "English": "EN"
+    "Portuguese (PT-BR)": "PT-BR"
+    "Both": "Both"
+
+enable_github_copilot:
+  type: bool
+  help: "Enable GitHub Copilot in VS Code settings?"
+  default: true
+
+cd_pipeline:
+  type: str
+  help: "Which CD pipeline to include?"
+  default: "none"
+  choices:
+    "No CD pipeline": "none"
+    "GitHub Actions (build & push Docker image)": "github-actions"
+    "Homelab (GitLab CI + Portainer webhook)": "homelab-gitlab"
+
+# --- Conditional file exclusion ---
+
+_exclude:
+  - "copier.yml"
+  - "tasks/"
+  - "__pycache__/"
+  - "*.pyc"
+  - "{% if cd_pipeline != 'github-actions' %}.github/workflows/deploy.yml{% endif %}"
+  - "{% if cd_pipeline != 'homelab-gitlab' %}.gitlab-ci.yml{% endif %}"
