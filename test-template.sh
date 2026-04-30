@@ -1,13 +1,13 @@
 #!/bin/bash
 set -e
 
-echo "Testing cookiecutter template..."
+echo "Testing Copier template..."
 
-# Generate project from template using non-interactive mode without hooks
-cookiecutter /template --no-input --overwrite-if-exists
+# Generate project from template using non-interactive mode
+copier copy --defaults --UNSAFE /template /workspace/my-awesome-project
 
 # Navigate to the generated project
-cd my-awesome-project
+cd /workspace/my-awesome-project
 
 echo "Initializing git repository..."
 git init
@@ -22,7 +22,7 @@ echo "Running ruff format check..."
 uv run ruff format --check .
 
 echo "Running pyright..."
-pyright
+uv run pyright
 
 echo "Running tests..."
 uv run pytest
@@ -33,4 +33,4 @@ pre-commit install -t pre-push
 git add .
 pre-commit run --all-files
 
-echo "✅ All tests passed! Cookiecutter template works correctly."
+echo "All tests passed! Copier template works correctly."

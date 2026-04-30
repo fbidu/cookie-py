@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '{{cookiecutter.python_version}}'
+          python-version: '{{ python_version }}'
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -36,7 +36,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '{{cookiecutter.python_version}}'
+          python-version: '{{ python_version }}'
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -56,7 +56,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '{{cookiecutter.python_version}}'
+          python-version: '{{ python_version }}'
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -65,4 +65,4 @@ jobs:
         run: uv sync --dev
 
       - name: Run security scan
-        run: uv run bandit -c pyproject.toml -r {{cookiecutter.pkg_name}}/
+        run: uv run bandit -c pyproject.toml -r {{ pkg_name }}/
