@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - name: ruff check
+            run: uv run ruff check .
+          - name: ruff format
+            run: uv run ruff format --check .
+          - name: pyright
+            run: uv run pyright
+          - name: pytest
+            run: uv run pytest
+          - name: bandit
+            run: uv run bandit -c pyproject.toml -r {{ pkg_name }}/
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv python install {{ python_version }}
+      - run: uv sync --dev
+      - name: {% raw %}${{ matrix.check.name }}{% endraw %}
+        run: {% raw %}${{ matrix.check.run }}{% endraw %}

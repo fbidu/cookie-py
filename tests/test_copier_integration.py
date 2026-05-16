@@ -87,8 +87,7 @@ class TestCopierGeneration:
             "my_awesome_project/__main__.py",
             "tests/__init__.py",
             "tests/test_my_awesome_project.py",
-            ".github/workflows/pre-commit.yml",
-            ".github/workflows/test.yml",
+            ".github/workflows/ci.yml",
         ]
         for file_path in essential_files:
             assert (generated_project / file_path).exists(), f"Missing file: {file_path}"
@@ -110,12 +109,14 @@ class TestCopierGeneration:
 
     def test_workflow_files_rendered_correctly(self, generated_project: Path) -> None:
         """Test that workflow files have rendered Copier vars and preserved GH Actions syntax."""
-        test_yml = (generated_project / ".github/workflows/test.yml").read_text()
-        # Copier variable should be rendered
-        assert "'3.12'" in test_yml
-        assert "cookiecutter" not in test_yml
+        ci_yml = (generated_project / ".github/workflows/ci.yml").read_text()
+        # Copier variables should be rendered
+        assert "uv python install 3.12" in ci_yml
+        assert "my_awesome_project/" in ci_yml
+        assert "cookiecutter" not in ci_yml
         # GitHub Actions expressions should be preserved
-        assert "${{ matrix.python-version }}" in test_yml
+        assert "${{ matrix.check.name }}" in ci_yml
+        assert "${{ matrix.check.run }}" in ci_yml
 
     def test_build_system_present(self, generated_project: Path) -> None:
         """Test that pyproject.toml has an explicit build-system."""
