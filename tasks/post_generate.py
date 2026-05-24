@@ -14,6 +14,15 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
 
+def _arg_value(flag: str) -> str | None:
+    """Return the value following ``flag`` in ``sys.argv``, or ``None`` if absent."""
+    if flag in sys.argv:
+        idx = sys.argv.index(flag)
+        if idx + 1 < len(sys.argv):
+            return sys.argv[idx + 1]
+    return None
+
+
 def check_prerequisites() -> None:
     """Verify required tools are installed."""
     missing: list[str] = []
@@ -127,6 +136,20 @@ def initial_commit() -> None:
     subprocess.run(["git", "branch", "-M", "main"], check=True)
 
 
+def setup_gitlab_repo() -> None:
+    """Create a GitLab project via glab and add it as the origin remote."""
+    if not which("glab"):
+        log.warning("glab not found on PATH; skipping GitLab repo creation.")
+        return
+    try:
+        subprocess.run(
+            ["glab", "repo", "create", "--defaultBranch", "main"],
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        log.warning("glab repo create failed (%s); skipping remote setup.", e)
+
+
 def main() -> None:
     """Main execution function."""
     import os
@@ -135,6 +158,7 @@ def main() -> None:
         return
 
     disable_copilot = "--disable-copilot" in sys.argv
+    cd_pipeline = _arg_value("--cd-pipeline")
 
     try:
         check_prerequisites()
@@ -148,6 +172,10 @@ def main() -> None:
             run_pre_commit_hooks()
 
         initial_commit()
+
+        if cd_pipeline == "homelab-gitlab":
+            setup_gitlab_repo()
+
         print("Project setup completed successfully!")
 
     except subprocess.CalledProcessError as e:

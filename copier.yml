@@ -6,6 +6,7 @@ _templates_suffix: .jinja
 _tasks:
   - command: >-
       python {{ _copier_conf.src_path }}/tasks/post_generate.py
+      --cd-pipeline {{ cd_pipeline }}
       {% if not enable_github_copilot %}--disable-copilot{% endif %}
 
 # --- Project metadata ---
