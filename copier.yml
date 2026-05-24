@@ -14,7 +14,7 @@ _tasks:
 project_name:
   type: str
   help: "What is your project's name?"
-  default: "My Awesome Project"
+  default: "{{ _copier_conf.dst_path.name }}"
 
 directory_name:
   type: str
