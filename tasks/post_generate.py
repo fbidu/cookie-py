@@ -53,10 +53,9 @@ def install_dependencies() -> None:
 
 
 def install_pre_commit() -> bool:
-    """Install git hooks through pre-commit."""
+    """Install git hooks through pre-commit (both pre-commit and pre-push via default_install_hook_types)."""
     try:
         subprocess.run(["pre-commit", "install", "--install-hooks"], check=True)
-        subprocess.run(["pre-commit", "install", "-t", "pre-push"], check=True)
     except subprocess.CalledProcessError:
         log.warning("Pre-commit installation failed. Continuing without pre-commit hooks.")
         return False
