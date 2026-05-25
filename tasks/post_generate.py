@@ -158,7 +158,7 @@ def main() -> None:
         return
 
     disable_copilot = "--disable-copilot" in sys.argv
-    cd_pipeline = _arg_value("--cd-pipeline")
+    ci_provider = _arg_value("--ci-provider")
 
     try:
         check_prerequisites()
@@ -173,7 +173,7 @@ def main() -> None:
 
         initial_commit()
 
-        if cd_pipeline == "homelab-gitlab":
+        if ci_provider == "gitlab":
             setup_gitlab_repo()
 
         print("Project setup completed successfully!")

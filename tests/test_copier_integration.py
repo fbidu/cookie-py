@@ -19,7 +19,7 @@ DEFAULT_DATA: dict[str, str | bool] = {
     "python_version": "3.12",
     "language": "EN",
     "enable_github_copilot": True,
-    "cd_pipeline": "none",
+    "ci_provider": "github",
 }
 
 
@@ -88,12 +88,12 @@ class TestCopierGeneration:
             "tests/__init__.py",
             "tests/test_my_awesome_project.py",
             ".github/workflows/ci.yml",
+            ".github/workflows/build.yml",
         ]
         for file_path in essential_files:
             assert (generated_project / file_path).exists(), f"Missing file: {file_path}"
 
-        # CD pipeline files should NOT exist when cd_pipeline=none
-        assert not (generated_project / ".github/workflows/deploy.yml").exists()
+        # GitLab CI must not exist when ci_provider=github
         assert not (generated_project / ".gitlab-ci.yml").exists()
 
     def test_template_variables_rendered(self, generated_project: Path) -> None:
@@ -209,21 +209,32 @@ class TestPythonVersions:
         )
 
 
-class TestCDPipelineGeneration:
-    """Test conditional CD pipeline generation."""
+class TestCIProviderGeneration:
+    """Test conditional CI file generation based on ci_provider."""
 
-    def test_github_actions_cd_generated(self, tmp_path: Path) -> None:
-        """Test that GitHub Actions deploy workflow is generated."""
-        project_dir = _generate_project(tmp_path / "github-cd", {"cd_pipeline": "github-actions"})
-        assert (project_dir / ".github/workflows/deploy.yml").exists()
+    def test_github_files_generated(self, tmp_path: Path) -> None:
+        """ci_provider=github generates the GitHub workflows and nothing GitLab."""
+        project_dir = _generate_project(tmp_path / "github", {"ci_provider": "github"})
+        assert (project_dir / ".github/workflows/ci.yml").exists()
+        assert (project_dir / ".github/workflows/build.yml").exists()
         assert not (project_dir / ".gitlab-ci.yml").exists()
 
-    def test_homelab_cd_generated(self, tmp_path: Path) -> None:
-        """Test that GitLab CI file is generated for homelab."""
-        project_dir = _generate_project(tmp_path / "homelab-cd", {"cd_pipeline": "homelab-gitlab"})
+    def test_gitlab_files_generated(self, tmp_path: Path) -> None:
+        """ci_provider=gitlab generates .gitlab-ci.yml and no GitHub workflows."""
+        project_dir = _generate_project(tmp_path / "gitlab", {"ci_provider": "gitlab"})
         assert (project_dir / ".gitlab-ci.yml").exists()
-        assert not (project_dir / ".github/workflows/deploy.yml").exists()
+        assert not (project_dir / ".github/workflows/ci.yml").exists()
+        assert not (project_dir / ".github/workflows/build.yml").exists()
 
         gitlab_ci = (project_dir / ".gitlab-ci.yml").read_text()
-        assert "PORTAINER_WEBHOOK_URL" in gitlab_ci
         assert "3.12" in gitlab_ci
+        # CD was nuked — no Portainer webhook, no deploy stage
+        assert "PORTAINER_WEBHOOK_URL" not in gitlab_ci
+        assert "deploy" not in gitlab_ci.split("stages:")[1].split("variables:")[0]
+
+    def test_no_ci_generates_nothing(self, tmp_path: Path) -> None:
+        """ci_provider=none produces no CI files for either provider."""
+        project_dir = _generate_project(tmp_path / "none", {"ci_provider": "none"})
+        assert not (project_dir / ".github/workflows/ci.yml").exists()
+        assert not (project_dir / ".github/workflows/build.yml").exists()
+        assert not (project_dir / ".gitlab-ci.yml").exists()

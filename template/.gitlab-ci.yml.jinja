@@ -1,7 +1,6 @@
 stages:
   - test
   - build
-  - deploy
 
 variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
@@ -54,21 +53,3 @@ build:
   only:
     - main
     - tags
-
-# --- Deploy stage (Portainer webhook) ---
-
-deploy:
-  stage: deploy
-  image: alpine:latest
-  before_script:
-    - apk add --no-cache curl
-  script:
-    - |
-      echo "Triggering Portainer stack update..."
-      curl -X POST "$PORTAINER_WEBHOOK_URL" \
-        --fail --silent --show-error
-  only:
-    - main
-  environment:
-    name: production
-  when: manual

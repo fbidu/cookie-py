@@ -6,7 +6,7 @@ _templates_suffix: .jinja
 _tasks:
   - command: >-
       python {{ _copier_conf.src_path }}/tasks/post_generate.py
-      --cd-pipeline {{ cd_pipeline }}
+      --ci-provider {{ ci_provider }}
       {% if not enable_github_copilot %}--disable-copilot{% endif %}
 
 # --- Project metadata ---
@@ -72,14 +72,14 @@ enable_github_copilot:
   help: "Enable GitHub Copilot in VS Code settings?"
   default: true
 
-cd_pipeline:
+ci_provider:
   type: str
-  help: "Which CD pipeline to include?"
+  help: "Which CI provider to set up?"
   default: "none"
   choices:
-    "No CD pipeline": "none"
-    "GitHub Actions (build & push Docker image)": "github-actions"
-    "Homelab (GitLab CI + Portainer webhook)": "homelab-gitlab"
+    "No CI": "none"
+    "GitHub Actions": "github"
+    "GitLab CI": "gitlab"
 
 # --- Conditional file exclusion ---
 
@@ -88,5 +88,6 @@ _exclude:
   - "tasks/"
   - "__pycache__/"
   - "*.pyc"
-  - "{% if cd_pipeline != 'github-actions' %}.github/workflows/deploy.yml{% endif %}"
-  - "{% if cd_pipeline != 'homelab-gitlab' %}.gitlab-ci.yml{% endif %}"
+  - "{% if ci_provider != 'github' %}.github/workflows/ci.yml{% endif %}"
+  - "{% if ci_provider != 'github' %}.github/workflows/build.yml{% endif %}"
+  - "{% if ci_provider != 'gitlab' %}.gitlab-ci.yml{% endif %}"
