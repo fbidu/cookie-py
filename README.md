@@ -43,7 +43,7 @@ _Itens marcados estão implementados!_
 * [x] Executar Pytest pre-push
 * [x] Relatório de Coverage no Pytest
 * [x] Configurações modernas em pyproject.toml
-* [x] Pipeline de CD opcional (GitHub Actions ou Homelab/GitLab)
+* [x] Pipeline de CI opcional (GitHub Actions ou GitLab CI)
 * [x] Atualização de projetos existentes com `copier update`
 
 ### Hooks de Pre-Commit Habilitados
@@ -51,6 +51,7 @@ _Itens marcados estão implementados!_
 * [x] Ruff (linting e formatação)
 * [x] Pyright (verificação de tipos)
 * [x] Bandit (segurança)
+* [x] actionlint (valida workflows do GitHub Actions, quando aplicável)
 * [x] Hooks básicos (trailing whitespace, end-of-file, etc.)
 
 ---
@@ -89,7 +90,7 @@ _Checked items are implemented_
 * [x] Run Pytest pre-push
 * [x] Coverage report on Pytest
 * [x] Modern pyproject.toml configuration
-* [x] Optional CD pipeline (GitHub Actions or Homelab/GitLab)
+* [x] Optional CI pipeline (GitHub Actions or GitLab CI)
 * [x] Update existing projects with `copier update`
 
 ### Pre-Commit Hooks
@@ -97,4 +98,5 @@ _Checked items are implemented_
 * [x] Ruff (linting and formatting)
 * [x] Pyright (type checking)
 * [x] Bandit (security)
+* [x] actionlint (validates GitHub Actions workflows, when applicable)
 * [x] Basic hooks (trailing whitespace, end-of-file, etc.)

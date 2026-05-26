@@ -1,0 +1,51 @@
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Python build artifacts and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local secrets — never let these leak into an image
+.env
+.env.*
+*.pem
+*.key
+
+# Project-level files irrelevant to runtime
+README.md
+CLAUDE.md
+LICENSE
+COPYING
+tests/
+.pre-commit-config.yaml
+.github/
+.gitlab-ci.yml
+Dockerfile
+.dockerignore

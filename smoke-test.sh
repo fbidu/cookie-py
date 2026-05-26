@@ -1,12 +1,15 @@
 #!/bin/bash
+# Bootstrap smoke test: exercises the template end-to-end on a minimal
+# Python image (no pre-installed tools beyond what the Dockerfile sets up).
+# Catches missing system packages and bootstrap issues that the host-based
+# pytest integration tests would miss. For configuration-matrix coverage
+# (multiple ci_provider / python_version / license combinations), see
+# tests/test_copier_integration.py instead.
 set -e
 
-echo "Testing Copier template..."
-
-# Generate project from template using non-interactive mode
+echo "Generating project from template..."
 copier copy --defaults --UNSAFE /template /workspace/my-awesome-project
 
-# Navigate to the generated project
 cd /workspace/my-awesome-project
 
 echo "Initializing git repository..."
@@ -29,8 +32,7 @@ uv run pytest
 
 echo "Installing and running pre-commit..."
 pre-commit install --install-hooks
-pre-commit install -t pre-push
 git add .
 pre-commit run --all-files
 
-echo "All tests passed! Copier template works correctly."
+echo "Smoke test passed."

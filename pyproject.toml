@@ -29,7 +29,7 @@ packages = ["tests", "tasks"]
 [tool.pytest.ini_options]
 addopts = """
     -ra -vv
-    --cov=tests
+    --cov=tasks
     --cov-report term-missing:skip-covered
     -m "not slow"
 """

@@ -20,8 +20,8 @@ WORKDIR /workspace
 # Copy the template
 COPY . /template
 
-# Copy and setup the test script
-COPY test-template.sh /test-template.sh
-RUN chmod +x /test-template.sh
+# Copy and setup the smoke test script
+COPY smoke-test.sh /smoke-test.sh
+RUN chmod +x /smoke-test.sh
 
-CMD ["/test-template.sh"]
+CMD ["/smoke-test.sh"]
