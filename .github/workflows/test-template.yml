@@ -52,30 +52,27 @@ jobs:
     - name: Run template tests in Docker
       run: docker run --rm cookie-py-test
 
-  code-quality:
+  pre-commit:
     runs-on: ubuntu-latest
-    name: Code Quality Checks
+    name: Pre-commit (lint, format, types, actionlint)
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-
     - name: Install uv
       uses: astral-sh/setup-uv@v3
+      with:
+        enable-cache: true
+        cache-dependency-glob: uv.lock
 
     - name: Install dependencies
       run: uv sync --dev
 
-    - name: Run ruff check
-      run: uv run ruff check .
+    - uses: actions/cache@v4
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
 
-    - name: Run ruff format check
-      run: uv run ruff format --check .
-
-    - name: Run pyright type checking
-      run: uv run pyright
+    - name: pre-commit (commit stage)
+      run: uv run pre-commit run --all-files --show-diff-on-failure --hook-stage pre-commit

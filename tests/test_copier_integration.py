@@ -112,11 +112,10 @@ class TestCopierGeneration:
         ci_yml = (generated_project / ".github/workflows/ci.yml").read_text()
         # Copier variables should be rendered
         assert "uv python install 3.12" in ci_yml
-        assert "my_awesome_project/" in ci_yml
         assert "cookiecutter" not in ci_yml
-        # GitHub Actions expressions should be preserved
-        assert "${{ matrix.check.name }}" in ci_yml
-        assert "${{ matrix.check.run }}" in ci_yml
+        # GitHub Actions expressions ({% raw %}…{% endraw %}) should be preserved verbatim
+        assert "${{ runner.os }}" in ci_yml
+        assert "${{ hashFiles(" in ci_yml
 
     def test_build_system_present(self, generated_project: Path) -> None:
         """Test that pyproject.toml has an explicit build-system."""

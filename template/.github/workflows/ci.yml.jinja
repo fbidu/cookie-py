@@ -7,23 +7,8 @@ on:
       - main
 
 jobs:
-  ci:
+  pre-commit:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        check:
-          - name: ruff check
-            run: uv run ruff check .
-          - name: ruff format
-            run: uv run ruff format --check .
-          - name: pyright
-            run: uv run pyright
-          - name: pytest
-            run: uv run pytest
-          - name: bandit
-            run: uv run bandit -c pyproject.toml -r {{ pkg_name }}/
-
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
@@ -32,5 +17,11 @@ jobs:
           cache-dependency-glob: uv.lock
       - run: uv python install {{ python_version }}
       - run: uv sync --dev
-      - name: {% raw %}${{ matrix.check.name }}{% endraw %}
-        run: {% raw %}${{ matrix.check.run }}{% endraw %}
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-{% raw %}${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}{% endraw %}
+      - name: pre-commit (commit stage)
+        run: uv run pre-commit run --all-files --show-diff-on-failure --hook-stage pre-commit
+      - name: pre-commit (push stage — pytest)
+        run: uv run pre-commit run --all-files --show-diff-on-failure --hook-stage pre-push
