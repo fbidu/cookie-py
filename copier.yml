@@ -2,12 +2,21 @@ _min_copier_version: "9.1.0"
 _subdirectory: template
 _templates_suffix: .jinja
 
-# Copier tasks (replacing cookiecutter hooks)
+# Copier tasks (replacing cookiecutter hooks). List form (not shell) so
+# arguments with spaces / quotes (e.g. author names) pass through safely.
 _tasks:
-  - command: >-
-      python {{ _copier_conf.src_path }}/tasks/post_generate.py
-      --ci-provider {{ ci_provider }}
-      {% if not enable_github_copilot %}--disable-copilot{% endif %}
+  - command:
+      - python
+      - "{{ _copier_conf.src_path }}/tasks/post_generate.py"
+      - "--ci-provider"
+      - "{{ ci_provider }}"
+      - "--license"
+      - "{{ license }}"
+      - "--author"
+      - "{{ author }}"
+      - "--template-src"
+      - "{{ _copier_conf.src_path }}"
+      - "{% if not enable_github_copilot %}--disable-copilot{% endif %}"
 
 # --- Project metadata ---
 
@@ -43,8 +52,14 @@ version:
 
 license:
   type: str
-  help: "License identifier"
+  help: "License (SPDX identifier; controls both pyproject metadata and the generated LICENSE file)"
   default: "MIT"
+  choices:
+    - "MIT"
+    - "Apache-2.0"
+    - "BSD-3-Clause"
+    - "GPL-3.0"
+    - "Proprietary"
 
 python_version:
   type: str

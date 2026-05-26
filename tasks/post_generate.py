@@ -7,11 +7,21 @@ import json
 import logging
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from shutil import which
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
+
+# Per-license placeholders to substitute. SPDX texts ship with these as
+# example markers; we replace them with the user's values.
+_LICENSE_PLACEHOLDERS: dict[str, tuple[tuple[str, str], ...]] = {
+    "MIT": (("<year>", "{year}"), ("<copyright holders>", "{author}")),
+    "BSD-3-Clause": (("<year>", "{year}"), ("<copyright holders>", "{author}")),
+    "Apache-2.0": (("[yyyy]", "{year}"), ("[name of copyright owner]", "{author}")),
+    "GPL-3.0": (("<year>  <name of author>", "{year}  {author}"),),
+}
 
 
 def _arg_value(flag: str) -> str | None:
@@ -135,6 +145,25 @@ def initial_commit() -> None:
     subprocess.run(["git", "branch", "-M", "main"], check=True)
 
 
+def write_license(template_src: Path, license_id: str, author: str) -> None:
+    """Write a LICENSE file with year/author substituted into the SPDX text.
+
+    Skips silently when license_id is Proprietary or unrecognized — the user
+    can drop in their own LICENSE.
+    """
+    if license_id == "Proprietary":
+        return
+    src = template_src / "licenses" / f"{license_id}.txt"
+    if not src.exists():
+        log.warning("Unknown license %r; skipping LICENSE generation.", license_id)
+        return
+    text = src.read_text()
+    year = str(datetime.now(tz=timezone.utc).year)
+    for placeholder, replacement in _LICENSE_PLACEHOLDERS.get(license_id, ()):
+        text = text.replace(placeholder, replacement.format(year=year, author=author))
+    Path("LICENSE").write_text(text)
+
+
 def setup_gitlab_repo() -> None:
     """Create a GitLab project via glab and add it as the origin remote."""
     if not which("glab"):
@@ -158,6 +187,9 @@ def main() -> None:
 
     disable_copilot = "--disable-copilot" in sys.argv
     ci_provider = _arg_value("--ci-provider")
+    license_id = _arg_value("--license")
+    author = _arg_value("--author")
+    template_src = _arg_value("--template-src")
 
     try:
         check_prerequisites()
@@ -166,6 +198,9 @@ def main() -> None:
 
         precommit_ok = install_pre_commit()
         setup_vscode_settings(disable_copilot=disable_copilot)
+
+        if license_id and author and template_src:
+            write_license(Path(template_src), license_id, author)
 
         if precommit_ok:
             run_pre_commit_hooks()
