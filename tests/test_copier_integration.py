@@ -172,38 +172,38 @@ class TestPythonVersions:
     """Test that generated projects work with each supported Python version.
 
     This catches pin drift between template choices and tool versions
-    (e.g., pre-commit hooks pinned to an old ruff that doesn't recognize a newer target-version).
+    (e.g., prek hooks pinned to an old ruff that doesn't recognize a newer target-version).
     """
 
     def test_ruff_check_accepts_target_version(self, tmp_path: Path, python_version: str) -> None:
-        """Pre-commit's pinned ruff must understand the chosen python_version target."""
-        if not which("pre-commit"):
-            pytest.skip("pre-commit not installed")
+        """Prek's pinned ruff must understand the chosen python_version target."""
+        if not which("prek"):
+            pytest.skip("prek not installed")
 
         project_dir = _generate_project(
             tmp_path / f"py{python_version.replace('.', '')}",
             {"python_version": python_version},
         )
 
-        # pre-commit needs a git repo to find files via --all-files
+        # prek needs a git repo to find files via --all-files
         subprocess.run(["git", "init", "-q"], cwd=project_dir, check=True)
         subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
 
         # Run ONLY the ruff hook so the test stays fast.
         # This uses the ruff version pinned in .pre-commit-config.yaml,
         # not the dev-dep ruff, so it catches pin drift between template
-        # choices and pre-commit hook versions.
+        # choices and prek hook versions.
         result = subprocess.run(
-            ["pre-commit", "run", "ruff", "--all-files"],
+            ["prek", "run", "ruff", "--all-files"],
             capture_output=True,
             text=True,
             cwd=project_dir,
         )
         # A freshly generated project should lint clean, so exit code must be 0.
-        # pre-commit collapses both "hook failed" and "files modified" into exit 1,
+        # prek collapses both "hook failed" and "files modified" into exit 1,
         # so we also check the output for the "Failed" status marker.
         assert result.returncode == 0 and "Failed" not in result.stdout, (
-            f"Pre-commit ruff hook failed on py{python_version}:\n"
+            f"Prek ruff hook failed on py{python_version}:\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 

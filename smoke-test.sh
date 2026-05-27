@@ -30,9 +30,9 @@ uv run pyright
 echo "Running tests..."
 uv run pytest
 
-echo "Installing and running pre-commit..."
-pre-commit install --install-hooks
+echo "Installing and running prek..."
+prek install --install-hooks
 git add .
-pre-commit run --all-files
+prek run --all-files
 
 echo "Smoke test passed."

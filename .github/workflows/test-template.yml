@@ -27,10 +27,10 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@v3
 
-    - name: Install copier and pre-commit
+    - name: Install copier and prek
       run: |
         uv tool install copier
-        uv tool install pre-commit
+        uv tool install prek
 
     - name: Install dependencies
       run: uv sync --dev
@@ -52,9 +52,9 @@ jobs:
     - name: Run template tests in Docker
       run: docker run --rm cookie-py-test
 
-  pre-commit:
+  prek:
     runs-on: ubuntu-latest
-    name: Pre-commit (lint, format, types, actionlint)
+    name: Prek (lint, format, types, actionlint)
 
     steps:
     - name: Checkout repository
@@ -71,8 +71,8 @@ jobs:
 
     - uses: actions/cache@v4
       with:
-        path: ~/.cache/pre-commit
-        key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+        path: ~/.cache/prek
+        key: prek-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
 
-    - name: pre-commit (commit stage)
-      run: uv run pre-commit run --all-files --show-diff-on-failure --hook-stage pre-commit
+    - name: prek (commit stage)
+      run: uv run prek run --all-files --show-diff-on-failure --hook-stage pre-commit

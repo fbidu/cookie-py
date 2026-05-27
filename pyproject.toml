@@ -12,7 +12,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "copier>=9.1.0",
-    "pre-commit>=4.0.0",
+    "prek>=0.4",
     "pyright>=1.1.390",
     "pytest>=9.0.3",
     "pytest-cov>=6.0.0",

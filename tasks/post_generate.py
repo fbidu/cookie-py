@@ -1,13 +1,13 @@
 """
 Post-generation tasks for Copier template.
-Sets up git, installs dependencies, configures pre-commit, and creates initial commit.
+Sets up git, installs dependencies, configures prek, and creates initial commit.
 """
 
 import json
 import logging
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from shutil import which
 
@@ -41,10 +41,10 @@ def check_prerequisites() -> None:
             "uv is not installed! See https://docs.astral.sh/uv/ for instructions.\n"
             "  For most systems: curl -LsSf https://astral.sh/uv/install.sh | sh"
         )
-    if not which("pre-commit"):
+    if not which("prek"):
         missing.append(
-            "pre-commit is not installed! See https://pre-commit.com/ for instructions.\n"
-            "  Install with: pip install pre-commit  or  uv tool install pre-commit"
+            "prek is not installed! See https://github.com/j178/prek for instructions.\n"
+            "  Install with: pip install prek  or  uv tool install prek"
         )
     if missing:
         for msg in missing:
@@ -63,11 +63,11 @@ def install_dependencies() -> None:
 
 
 def install_pre_commit() -> bool:
-    """Install git hooks through pre-commit (both pre-commit and pre-push via default_install_hook_types)."""
+    """Install git hooks through prek (both pre-commit and pre-push via default_install_hook_types)."""
     try:
-        subprocess.run(["pre-commit", "install", "--install-hooks"], check=True)
+        subprocess.run(["prek", "install", "--install-hooks"], check=True)
     except subprocess.CalledProcessError:
-        log.warning("Pre-commit installation failed. Continuing without pre-commit hooks.")
+        log.warning("Prek installation failed. Continuing without git hooks.")
         return False
     return True
 
@@ -120,20 +120,20 @@ def setup_vscode_settings(*, disable_copilot: bool = False) -> None:
 
 
 def run_pre_commit_hooks() -> bool:
-    """Run an initial pass of all pre-commit hooks."""
+    """Run an initial pass of all prek hooks."""
     try:
         subprocess.run(["git", "add", "."], check=True)
         result = subprocess.run(
-            ["pre-commit", "run", "--all-files"],
+            ["prek", "run", "--all-files"],
             check=False,
             capture_output=True,
             text=True,
         )
         if result.returncode > 1:
-            log.warning("Pre-commit hooks had errors (exit code %d)", result.returncode)
+            log.warning("Prek hooks had errors (exit code %d)", result.returncode)
             return False
     except subprocess.CalledProcessError:
-        log.warning("Pre-commit hooks failed. Continuing.")
+        log.warning("Prek hooks failed. Continuing.")
         return False
     return True
 
@@ -158,7 +158,7 @@ def write_license(template_src: Path, license_id: str, author: str) -> None:
         log.warning("Unknown license %r; skipping LICENSE generation.", license_id)
         return
     text = src.read_text()
-    year = str(datetime.now(tz=timezone.utc).year)
+    year = str(datetime.now(tz=UTC).year)
     for placeholder, replacement in _LICENSE_PLACEHOLDERS.get(license_id, ()):
         text = text.replace(placeholder, replacement.format(year=year, author=author))
     Path("LICENSE").write_text(text)

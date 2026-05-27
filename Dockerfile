@@ -6,8 +6,8 @@ RUN apt-get update && apt-get install -y \
     libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv, copier, pre-commit, and pyright
-RUN pip install --no-cache-dir uv copier pre-commit pyright
+# Install uv, copier, prek, and pyright
+RUN pip install --no-cache-dir uv copier prek pyright
 
 # Set git config for Docker environment
 RUN git config --global user.email "test@example.com" && \

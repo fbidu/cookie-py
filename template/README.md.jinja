@@ -28,14 +28,14 @@ This project uses modern Python tooling:
 - **[ruff](https://docs.astral.sh/ruff/)** for linting and code formatting
 - **[pyright](https://github.com/microsoft/pyright)** for type checking
 - **[pytest](https://docs.pytest.org/)** for testing
-- **[pre-commit](https://pre-commit.com/)** for git hooks
+- **[prek](https://github.com/j178/prek)** for git hooks (drop-in `pre-commit` replacement)
 
 ### Setup
 
-1. Install [uv](https://docs.astral.sh/uv/) and [pre-commit](https://pre-commit.com/) globally
+1. Install [uv](https://docs.astral.sh/uv/) and [prek](https://github.com/j178/prek) globally
 2. Clone this repository
 3. Run `uv sync --dev` to install dependencies
-4. Run `pre-commit install --install-hooks` to set up both pre-commit and pre-push hooks
+4. Run `prek install --install-hooks` to set up both pre-commit and pre-push hooks
 
 ### Commands
 
@@ -43,7 +43,7 @@ This project uses modern Python tooling:
 - `uv run ruff check .` - Run linting
 - `uv run ruff format .` - Format code
 - `pyright` - Run type checking
-- `pre-commit run --all-files` - Run all pre-commit hooks
+- `prek run --all-files` - Run all hooks
 
 {% endif %}
 {% if language == "Both" or language == "PT-BR" %}
@@ -66,14 +66,14 @@ Este projeto usa ferramentas modernas do Python:
 - **[ruff](https://docs.astral.sh/ruff/)** para linting e formatação de código
 - **[pyright](https://github.com/microsoft/pyright)** para verificação de tipos
 - **[pytest](https://docs.pytest.org/)** para testes
-- **[pre-commit](https://pre-commit.com/)** para git hooks
+- **[prek](https://github.com/j178/prek)** para git hooks (substituto drop-in do `pre-commit`)
 
 ### Configuração
 
-1. Instale [uv](https://docs.astral.sh/uv/) e [pre-commit](https://pre-commit.com/) globalmente
+1. Instale [uv](https://docs.astral.sh/uv/) e [prek](https://github.com/j178/prek) globalmente
 2. Clone este repositório
 3. Execute `uv sync --dev` para instalar dependências
-4. Execute `pre-commit install --install-hooks` para configurar os hooks de pre-commit e pre-push
+4. Execute `prek install --install-hooks` para configurar os hooks de pre-commit e pre-push
 
 ### Comandos
 
@@ -81,6 +81,6 @@ Este projeto usa ferramentas modernas do Python:
 - `uv run ruff check .` - Executar linting
 - `uv run ruff format .` - Formatar código
 - `pyright` - Executar verificação de tipos
-- `pre-commit run --all-files` - Executar todos os pre-commit hooks
+- `prek run --all-files` - Executar todos os hooks
 
 {% endif %}

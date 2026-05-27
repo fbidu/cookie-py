@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  pre-commit:
+  prek:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,9 +19,9 @@ jobs:
       - run: uv sync --dev
       - uses: actions/cache@v4
         with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-{% raw %}${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}{% endraw %}
-      - name: pre-commit (commit stage)
-        run: uv run pre-commit run --all-files --show-diff-on-failure --hook-stage pre-commit
-      - name: pre-commit (push stage — pytest)
-        run: uv run pre-commit run --all-files --show-diff-on-failure --hook-stage pre-push
+          path: ~/.cache/prek
+          key: prek-{% raw %}${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}{% endraw %}
+      - name: prek (commit stage)
+        run: uv run prek run --all-files --show-diff-on-failure --hook-stage pre-commit
+      - name: prek (push stage — pytest)
+        run: uv run prek run --all-files --show-diff-on-failure --hook-stage pre-push

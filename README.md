@@ -16,7 +16,7 @@ que inclui várias ferramentas modernas que gosto de usar.
 
 Um template Copier serve para criar novos projetos com base em um formato
 pré-definido. No caso em todo projeto Python, eu gosto de usar certas ferramentas
-como Ruff, PyTest, Pyright, Pre-Commit e uv. Esse meu modelo instala
+como Ruff, PyTest, Pyright, prek e uv. Esse meu modelo instala
 tudo e configura tudo isso para mim!
 
 É um modelo fortemente enviesado para o que eu gosto, uma vez que ele reflete
@@ -36,7 +36,7 @@ Sinta-se livre para usar, forkear e modificar a vontade!
 _Itens marcados estão implementados!_
 
 * [x] Usar o uv para gerenciar pacotes e ambientes virtuais
-* [x] Usar o pre-commit para cuidar de hooks pre-commit do git
+* [x] Usar o prek para cuidar de hooks pre-commit do git
 * [x] Instalar o Pytest com plugins úteis (coverage, xdist, randomly)
 * [x] Instalar o Ruff para formatação e linting
 * [x] Instalar o Pyright para verificação de tipos
@@ -46,7 +46,7 @@ _Itens marcados estão implementados!_
 * [x] Pipeline de CI opcional (GitHub Actions ou GitLab CI)
 * [x] Atualização de projetos existentes com `copier update`
 
-### Hooks de Pre-Commit Habilitados
+### Hooks Habilitados
 
 * [x] Ruff (linting e formatação)
 * [x] Pyright (verificação de tipos)
@@ -63,7 +63,7 @@ that includes modern tools I like to use.
 
 A Copier template is useful to create new projects based on a pre-defined
 model. In every Python project I like to use some tools like Ruff, PyTest,
-Pyright, Pre-Commit and uv. This template installs and sets up all those
+Pyright, prek and uv. This template installs and sets up all those
 tools for me!
 
 It is highly opinionated since it reflects my personal choices about tooling,
@@ -83,7 +83,7 @@ Feel free to use, fork and modify at will!
 _Checked items are implemented_
 
 * [x] Use uv to manage packages and virtual environments
-* [x] Use Pre-commit to handle git pre-commit hooks
+* [x] Use prek to handle git pre-commit hooks
 * [x] Install Pytest with useful plugins (coverage, xdist, randomly)
 * [x] Install Ruff for linting and formatting
 * [x] Install Pyright for type checking
@@ -93,7 +93,7 @@ _Checked items are implemented_
 * [x] Optional CI pipeline (GitHub Actions or GitLab CI)
 * [x] Update existing projects with `copier update`
 
-### Pre-Commit Hooks
+### Hooks
 
 * [x] Ruff (linting and formatting)
 * [x] Pyright (type checking)
