@@ -20,6 +20,7 @@ DEFAULT_DATA: dict[str, str | bool] = {
     "language": "EN",
     "enable_github_copilot": True,
     "ci_provider": "github",
+    "dependency_updates": "renovate",
 }
 
 
@@ -237,3 +238,44 @@ class TestCIProviderGeneration:
         assert not (project_dir / ".github/workflows/ci.yml").exists()
         assert not (project_dir / ".github/workflows/build.yml").exists()
         assert not (project_dir / ".gitlab-ci.yml").exists()
+
+
+class TestDependencyUpdates:
+    """Test conditional Renovate setup based on dependency_updates and ci_provider."""
+
+    def test_github_ships_config_and_self_hosted_runner(self, tmp_path: Path) -> None:
+        """github + renovate ships renovate.json and the self-hosted workflow."""
+        project_dir = _generate_project(
+            tmp_path / "gh-renovate",
+            {"ci_provider": "github", "dependency_updates": "renovate"},
+        )
+        assert (project_dir / "renovate.json").exists()
+        renovate_wf = project_dir / ".github/workflows/renovate.yml"
+        assert renovate_wf.exists()
+        # GitHub Actions expressions ({% raw %}…{% endraw %}) must survive verbatim.
+        wf = renovate_wf.read_text()
+        assert "${{ secrets.RENOVATE_TOKEN }}" in wf
+        assert "${{ github.repository }}" in wf
+        assert "{% raw %}" not in wf, "Unrendered jinja raw block found"
+
+    def test_gitlab_ships_config_and_pipeline_job(self, tmp_path: Path) -> None:
+        """gitlab + renovate ships renovate.json and a scheduled pipeline job (no GH workflow)."""
+        project_dir = _generate_project(
+            tmp_path / "gl-renovate",
+            {"ci_provider": "gitlab", "dependency_updates": "renovate"},
+        )
+        assert (project_dir / "renovate.json").exists()
+        assert not (project_dir / ".github/workflows/renovate.yml").exists()
+        gitlab_ci = (project_dir / ".gitlab-ci.yml").read_text()
+        assert "renovate:" in gitlab_ci
+        assert "maintenance" in gitlab_ci
+        assert "if: '$CI_PIPELINE_SOURCE == \"schedule\"'" in gitlab_ci
+
+    def test_none_ships_nothing(self, tmp_path: Path) -> None:
+        """dependency_updates=none ships no Renovate config or runner."""
+        project_dir = _generate_project(
+            tmp_path / "no-renovate",
+            {"ci_provider": "github", "dependency_updates": "none"},
+        )
+        assert not (project_dir / "renovate.json").exists()
+        assert not (project_dir / ".github/workflows/renovate.yml").exists()
