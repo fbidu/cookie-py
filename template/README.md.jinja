@@ -44,6 +44,24 @@ This project uses modern Python tooling:
 - `uv run ruff format .` - Format code
 - `pyright` - Run type checking
 - `prek run --all-files` - Run all hooks
+{% if dependency_updates == "renovate" %}
+### Dependency updates
+
+This project uses [Renovate](https://docs.renovatebot.com/) to keep dependencies and pinned tool versions current. It reads `renovate.json`.
+{% if ci_provider == "github" %}
+Activate it with **one** of these (using both causes duplicate PRs):
+
+- **Hosted app (recommended):** install the [Renovate GitHub App](https://github.com/apps/renovate) — free for public and private repos — then delete `.github/workflows/renovate.yml`.
+- **Self-hosted:** keep the bundled `.github/workflows/renovate.yml` and add a `RENOVATE_TOKEN` repository secret (a PAT with `repo` + `workflow` scopes, or a GitHub App token).
+{% elif ci_provider == "gitlab" %}
+To activate it:
+
+1. Add a masked `RENOVATE_TOKEN` CI/CD variable — a Project or Group Access Token with the `api` scope and Maintainer role.
+2. Create a **pipeline schedule** (e.g. weekly) on your default branch. The `renovate` job runs only on scheduled pipelines.
+{% else %}
+Point a Renovate runner — the [hosted app](https://github.com/apps/renovate) or a scheduled CI job — at this repo and it will pick up `renovate.json`.
+{% endif %}
+{% endif %}
 
 {% endif %}
 {% if language == "Both" or language == "PT-BR" %}
@@ -82,5 +100,23 @@ Este projeto usa ferramentas modernas do Python:
 - `uv run ruff format .` - Formatar código
 - `pyright` - Executar verificação de tipos
 - `prek run --all-files` - Executar todos os hooks
+{% if dependency_updates == "renovate" %}
+### Atualização de dependências
+
+Este projeto usa o [Renovate](https://docs.renovatebot.com/) para manter as dependências e versões fixadas de ferramentas atualizadas. Ele lê o `renovate.json`.
+{% if ci_provider == "github" %}
+Ative com **uma** destas opções (usar as duas gera PRs duplicados):
+
+- **App hospedado (recomendado):** instale o [Renovate GitHub App](https://github.com/apps/renovate) — gratuito para repositórios públicos e privados — e então remova o `.github/workflows/renovate.yml`.
+- **Auto-hospedado:** mantenha o `.github/workflows/renovate.yml` incluído e adicione um secret `RENOVATE_TOKEN` (um PAT com escopos `repo` + `workflow`, ou um token de GitHub App).
+{% elif ci_provider == "gitlab" %}
+Para ativar:
+
+1. Adicione uma variável CI/CD mascarada `RENOVATE_TOKEN` — um Project/Group Access Token com escopo `api` e papel Maintainer.
+2. Crie um **agendamento de pipeline** (ex.: semanal) na sua branch padrão. O job `renovate` roda apenas em pipelines agendados.
+{% else %}
+Aponte um runner do Renovate — o [app hospedado](https://github.com/apps/renovate) ou um job de CI agendado — para este repositório e ele usará o `renovate.json`.
+{% endif %}
+{% endif %}
 
 {% endif %}

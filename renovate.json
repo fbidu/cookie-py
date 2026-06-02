@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "labels": ["dependencies"],
+  "description": "Renovate is the single dependency bot for this repo (it supersedes Dependabot). Its default managers cover the root project: uv/pyproject.toml, the root GitHub Actions workflows, the Dockerfile, and .pre-commit-config.yaml. The custom regex managers below extend it to the copier template's .jinja files, which no native manager can parse because of the jinja syntax.",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "GitHub Actions pinned in the template's workflow .jinja files",
+      "fileMatch": ["^template/\\.github/workflows/[^/]+\\.jinja$"],
+      "matchStrings": ["uses:\\s+(?<depName>[\\w.-]+/[\\w.-]+)@(?<currentValue>v\\d+(?:\\.\\d+){0,2})"],
+      "datasourceTemplate": "github-tags"
+    },
+    {
+      "customType": "regex",
+      "description": "pre-commit hook revs pinned in the template's .pre-commit-config.yaml.jinja",
+      "fileMatch": ["^template/\\.pre-commit-config\\.yaml\\.jinja$"],
+      "matchStrings": ["repo: https://github\\.com/(?<depName>[\\w.-]+/[\\w.-]+)\\s+rev:\\s+[\"']?(?<currentValue>v?\\d+(?:\\.\\d+){0,2})[\"']?"],
+      "datasourceTemplate": "github-tags"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Tag template-file updates so they are easy to distinguish from root updates",
+      "matchFileNames": ["template/**"],
+      "addLabels": ["template"],
+      "semanticCommitScope": "template"
+    }
+  ]
+}

@@ -1,6 +1,9 @@
 stages:
   - test
   - build
+{% if dependency_updates == "renovate" %}
+  - maintenance
+{% endif %}
 
 variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
@@ -53,3 +56,28 @@ build:
   only:
     - main
     - tags
+  except:
+    - schedules
+{% if dependency_updates == "renovate" %}
+
+# --- Maintenance stage ---
+# Renovate runs only on scheduled pipelines. To enable it:
+#   1. Settings > CI/CD > Variables: add a masked RENOVATE_TOKEN
+#      (Project/Group Access Token, `api` scope, Maintainer role).
+#   2. Build > Pipeline schedules: add a schedule (e.g. weekly) on your
+#      default branch.
+# RENOVATE_ENDPOINT uses CI_API_V4_URL, so this works on self-managed
+# GitLab instances too — no hardcoded URL needed.
+renovate:
+  stage: maintenance
+  image: renovate/renovate:latest
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  variables:
+    RENOVATE_PLATFORM: gitlab
+    RENOVATE_ENDPOINT: $CI_API_V4_URL
+    RENOVATE_TOKEN: $RENOVATE_TOKEN
+    RENOVATE_AUTODISCOVER: "false"
+  script:
+    - renovate $CI_PROJECT_PATH
+{% endif %}

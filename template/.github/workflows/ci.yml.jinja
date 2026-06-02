@@ -10,14 +10,14 @@ jobs:
   prek:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv python install {{ python_version }}
       - run: uv sync --dev
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.cache/prek
           key: prek-{% raw %}${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}{% endraw %}

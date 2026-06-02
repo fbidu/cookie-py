@@ -96,6 +96,14 @@ ci_provider:
     "GitHub Actions": "github"
     "GitLab CI": "gitlab"
 
+dependency_updates:
+  type: str
+  help: "Set up automated dependency updates with Renovate?"
+  default: "renovate"
+  choices:
+    "Renovate": "renovate"
+    "None": "none"
+
 # --- Conditional file exclusion ---
 
 _exclude:
@@ -106,3 +114,5 @@ _exclude:
   - "{% if ci_provider != 'github' %}.github/workflows/ci.yml{% endif %}"
   - "{% if ci_provider != 'github' %}.github/workflows/build.yml{% endif %}"
   - "{% if ci_provider != 'gitlab' %}.gitlab-ci.yml{% endif %}"
+  - "{% if dependency_updates != 'renovate' %}renovate.json{% endif %}"
+  - "{% if dependency_updates != 'renovate' or ci_provider != 'github' %}.github/workflows/renovate.yml{% endif %}"

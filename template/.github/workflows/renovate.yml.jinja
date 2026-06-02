@@ -1,0 +1,34 @@
+# Self-hosted Renovate runner.
+#
+# This is an ALTERNATIVE to the hosted Renovate GitHub App
+# (https://github.com/apps/renovate). Use exactly ONE of them, or you'll
+# get duplicate PRs:
+#   * Prefer the hosted app for public/most private repos — then delete this file.
+#   * Use this workflow when a third-party app isn't allowed (org policy, etc.).
+#
+# To use this workflow:
+#   1. Create a token with repo + workflow scopes (classic PAT, or a GitHub App
+#      token via actions/create-github-app-token). The `workflow` scope is
+#      required because Renovate edits files under .github/workflows/.
+#   2. Save it as the RENOVATE_TOKEN repository secret.
+#   3. (Optional) adjust the schedule below; trigger manually via "Run workflow".
+name: Renovate
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: renovatebot/github-action@v40
+        with:
+          token: {% raw %}${{ secrets.RENOVATE_TOKEN }}{% endraw %}
+        env:
+          RENOVATE_REPOSITORIES: {% raw %}${{ github.repository }}{% endraw %}
+          RENOVATE_AUTODISCOVER: "false"
+          LOG_LEVEL: info
