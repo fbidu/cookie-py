@@ -8,14 +8,12 @@
 # the whole update aborts), so the job passes --trust but sets
 # SKIP_POST_GENERATE, which makes post_generate.py a no-op.
 #
-# Auth: uses the built-in GITHUB_TOKEN through the `gh` CLI — nothing to set
-# up. Two things to know:
-#   * Enable Settings > Actions > General > "Allow GitHub Actions to create
-#     and approve pull requests".
-#   * PRs opened with GITHUB_TOKEN don't trigger other workflows, so CI
-#     won't start automatically on the update PR — push a commit or close/
-#     reopen it to run CI. (Swap GH_TOKEN below for a PAT if you'd rather it
-#     run CI automatically.)
+# Auth: needs a token with `repo` + `workflow` scopes saved as the
+# COPIER_UPDATE_TOKEN repository secret (classic PAT, or a GitHub App token
+# via actions/create-github-app-token). The `workflow` scope is required
+# because template updates routinely touch files under .github/workflows/,
+# and the built-in GITHUB_TOKEN is forbidden from pushing those. Using a PAT
+# also means CI runs normally on the update PR.
 name: Copier Update
 
 on:
@@ -39,6 +37,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          # Persist the PAT so the later `git push` can update workflow files.
+          token: {% raw %}${{ secrets.COPIER_UPDATE_TOKEN }}{% endraw %}
       - uses: astral-sh/setup-uv@v8.1.0
       - name: Run copier update
         env:
@@ -53,7 +53,7 @@ jobs:
           uvx copier update --defaults --trust
       - name: Open or refresh pull request
         env:
-          GH_TOKEN: {% raw %}${{ github.token }}{% endraw %}
+          GH_TOKEN: {% raw %}${{ secrets.COPIER_UPDATE_TOKEN }}{% endraw %}
         run: |
           if [ -z "$(git status --porcelain)" ]; then
             echo "No template changes — nothing to do."
