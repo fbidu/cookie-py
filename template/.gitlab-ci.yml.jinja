@@ -116,12 +116,15 @@ copier-update:
         echo "No template changes — nothing to do."
         exit 0
       fi
-      git checkout -B chore/copier-update
+      # Stage everything first — this resolves any unmerged index left by
+      # copier's 3-way merge so the branch can be created and the conflicts
+      # travel into the MR for a human to resolve, instead of failing the job.
       git add -A
+      git checkout -B chore/copier-update
       git commit -m "chore: update from template via copier"
       git remote set-url origin "https://oauth2:${COPIER_UPDATE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
       git push -f origin chore/copier-update \
         -o merge_request.create \
         -o merge_request.target="$CI_DEFAULT_BRANCH" \
         -o merge_request.title="chore: copier template update" \
-        -o merge_request.description="Automated copier update. Resolve any *.rej conflict files before merging."
+        -o merge_request.description="Automated copier update. Resolve any conflict markers (<<<<<<< / >>>>>>>) before merging."

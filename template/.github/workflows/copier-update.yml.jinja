@@ -60,14 +60,23 @@ jobs:
             exit 0
           fi
           BRANCH="chore/copier-update"
-          git checkout -B "$BRANCH"
+          # copier's 3-way merge can leave conflict markers and an unmerged
+          # index. Record whether that happened, then `git add -A` (which also
+          # resolves the index) so the conflicts ride along in the PR rather
+          # than crashing the job — a human resolves them there.
+          CONFLICTS="$(git ls-files --unmerged)"
           git add -A
+          git checkout -B "$BRANCH"
           git commit -m "chore: update from template via copier"
           git push --force origin "$BRANCH"
+          TITLE="chore: copier template update"
+          BODY="Automated \`copier update\` run. Review the changes before merging."
+          if [ -n "$CONFLICTS" ]; then
+            TITLE="$TITLE (conflicts to resolve)"
+            BODY="Automated \`copier update\` run that hit merge conflicts. Resolve the conflict markers (\`<<<<<<<\` / \`>>>>>>>\`) before merging."
+          fi
           if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -qx OPEN; then
             echo "Existing PR refreshed with the latest template changes."
           else
-            gh pr create --head "$BRANCH" \
-              --title "chore: copier template update" \
-              --body "Automated \`copier update\` run. Review the changes and resolve any \`*.rej\` conflict files before merging."
+            gh pr create --head "$BRANCH" --title "$TITLE" --body "$BODY"
           fi
