@@ -32,6 +32,14 @@
       "matchDatasources": ["github-tags"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "enabled": false
+    },
+    {
+      "description": "Exception to the floating-major freeze: setup-uv dropped its floating @v8 tag in v8.0.0 (immutable releases), so it must be exact-pinned. Keep minor/patch PRs flowing so the pin still receives updates between majors.",
+      "matchFileNames": [".github/workflows/**", "template/.github/workflows/**"],
+      "matchDatasources": ["github-tags"],
+      "matchDepNames": ["astral-sh/setup-uv"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "enabled": true
     }
   ]
 }
