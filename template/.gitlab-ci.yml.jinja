@@ -83,9 +83,9 @@ renovate:
 # --- Template sync (copier) ---
 # Weekly `copier update` that opens an MR when the upstream template (the one
 # recorded in .copier-answers.yml) has newer changes. Runs only on scheduled
-# pipelines. It never runs the template's post-generation task — `copier
-# update` runs without --trust (so Copier skips tasks) and SKIP_POST_GENERATE
-# is set as a second guard.
+# pipelines. Copier requires --trust to apply an update when the template
+# declares tasks; SKIP_POST_GENERATE makes the post-generation task a no-op,
+# so nothing destructive (git init / initial commit / repo creation) runs.
 # To enable it:
 #   1. Settings > CI/CD > Variables: add a masked, protected
 #      COPIER_UPDATE_TOKEN (Project/Group Access Token with `api` +
@@ -109,7 +109,7 @@ copier-update:
   script:
     - git config user.email "copier-update@$CI_SERVER_HOST"
     - git config user.name "copier-update"
-    - SKIP_POST_GENERATE=1 uvx copier update --defaults
+    - SKIP_POST_GENERATE=1 uvx copier update --defaults --trust
     - |
       if [ -z "$(git status --porcelain)" ]; then
         echo "No template changes — nothing to do."
