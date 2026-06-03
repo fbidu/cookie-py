@@ -27,6 +27,11 @@ permissions:
   contents: write
   pull-requests: write
 
+# A scheduled run and a manual one shouldn't fight over the update branch.
+concurrency:
+  group: copier-update
+  cancel-in-progress: true
+
 jobs:
   copier-update:
     runs-on: ubuntu-latest
