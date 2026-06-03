@@ -1,9 +1,7 @@
 stages:
   - test
   - build
-{% if dependency_updates == "renovate" %}
   - maintenance
-{% endif %}
 
 variables:
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
@@ -81,3 +79,48 @@ renovate:
   script:
     - renovate $CI_PROJECT_PATH
 {% endif %}
+
+# --- Template sync (copier) ---
+# Weekly `copier update` that opens an MR when the upstream template (the one
+# recorded in .copier-answers.yml) has newer changes. Runs only on scheduled
+# pipelines. It never runs the template's post-generation task — `copier
+# update` runs without --trust (so Copier skips tasks) and SKIP_POST_GENERATE
+# is set as a second guard.
+# To enable it:
+#   1. Settings > CI/CD > Variables: add a masked, protected
+#      COPIER_UPDATE_TOKEN (Project/Group Access Token with `api` +
+#      `write_repository` scopes, Developer role). The built-in CI_JOB_TOKEN
+#      can neither push branches nor open MRs. You may reuse RENOVATE_TOKEN
+#      if its scopes cover write_repository.
+#   2. Build > Pipeline schedules: add a weekly schedule on your default
+#      branch (reuse the Renovate schedule if you have one).
+# The MR is created via GitLab push options — no extra CLI needed.
+copier-update:
+  stage: maintenance
+  image: python:{{ python_version }}-slim
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: "0"
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git ca-certificates
+    - pip install uv
+  script:
+    - git config user.email "copier-update@$CI_SERVER_HOST"
+    - git config user.name "copier-update"
+    - SKIP_POST_GENERATE=1 uvx copier update --defaults
+    - |
+      if [ -z "$(git status --porcelain)" ]; then
+        echo "No template changes — nothing to do."
+        exit 0
+      fi
+      git checkout -B chore/copier-update
+      git add -A
+      git commit -m "chore: update from template via copier"
+      git remote set-url origin "https://oauth2:${COPIER_UPDATE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git push -f origin chore/copier-update \
+        -o merge_request.create \
+        -o merge_request.target="$CI_DEFAULT_BRANCH" \
+        -o merge_request.title="chore: copier template update" \
+        -o merge_request.description="Automated copier update. Resolve any *.rej conflict files before merging."

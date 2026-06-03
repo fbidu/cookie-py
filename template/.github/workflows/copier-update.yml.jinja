@@ -1,0 +1,65 @@
+# Weekly check for upstream template updates via Copier.
+#
+# When the template recorded in .copier-answers.yml has newer changes, this
+# opens (or refreshes) a `chore/copier-update` pull request. It NEVER runs
+# the template's post-generation task (git init / initial commit / repo
+# creation) — that must only happen at project creation, so the job runs
+# `copier update` without --trust (Copier then skips tasks) and also sets
+# SKIP_POST_GENERATE as a second guard.
+#
+# Auth: uses the built-in GITHUB_TOKEN through the `gh` CLI — nothing to set
+# up. Two things to know:
+#   * Enable Settings > Actions > General > "Allow GitHub Actions to create
+#     and approve pull requests".
+#   * PRs opened with GITHUB_TOKEN don't trigger other workflows, so CI
+#     won't start automatically on the update PR — push a commit or close/
+#     reopen it to run CI. (Swap GH_TOKEN below for a PAT if you'd rather it
+#     run CI automatically.)
+name: Copier Update
+
+on:
+  schedule:
+    - cron: "0 6 * * 4"  # Thursdays 06:00 UTC (offset from Renovate's Monday run)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  copier-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v8.1.0
+      - name: Run copier update
+        env:
+          SKIP_POST_GENERATE: "1"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # No --trust → Copier skips template tasks/migrations (safe for an
+          # unattended run); --defaults answers any newly added questions.
+          uvx copier update --defaults
+      - name: Open or refresh pull request
+        env:
+          GH_TOKEN: {% raw %}${{ github.token }}{% endraw %}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No template changes — nothing to do."
+            exit 0
+          fi
+          BRANCH="chore/copier-update"
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "chore: update from template via copier"
+          git push --force origin "$BRANCH"
+          if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -qx OPEN; then
+            echo "Existing PR refreshed with the latest template changes."
+          else
+            gh pr create --head "$BRANCH" \
+              --title "chore: copier template update" \
+              --body "Automated \`copier update\` run. Review the changes and resolve any \`*.rej\` conflict files before merging."
+          fi
