@@ -23,6 +23,9 @@ type-check:
   stage: test
   image: python:{{ python_version }}-slim
   before_script:
+    # pyright ships its own Node, which needs libatomic at runtime — absent
+    # from the slim image ("libatomic.so.1: cannot open shared object file").
+    - apt-get update && apt-get install -y --no-install-recommends libatomic1
     - pip install uv
     - uv sync --dev
   script:
@@ -69,6 +72,8 @@ build:
 renovate:
   stage: maintenance
   image: renovate/renovate:latest
+  # Don't gate maintenance on the project's own test stage.
+  needs: []
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
   variables:
@@ -99,6 +104,9 @@ copier-update:
   stage: maintenance
   image: python:{{ python_version }}-slim
   interruptible: true
+  # Run independently of the test stage — a template sync shouldn't be blocked
+  # by the project's own tests failing.
+  needs: []
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
   variables:
