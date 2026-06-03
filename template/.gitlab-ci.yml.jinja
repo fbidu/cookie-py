@@ -98,6 +98,7 @@ renovate:
 copier-update:
   stage: maintenance
   image: python:{{ python_version }}-slim
+  interruptible: true
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
   variables:
