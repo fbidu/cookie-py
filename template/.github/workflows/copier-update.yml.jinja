@@ -1,11 +1,12 @@
 # Weekly check for upstream template updates via Copier.
 #
 # When the template recorded in .copier-answers.yml has newer changes, this
-# opens (or refreshes) a `chore/copier-update` pull request. It NEVER runs
-# the template's post-generation task (git init / initial commit / repo
-# creation) — that must only happen at project creation, so the job runs
-# `copier update` without --trust (Copier then skips tasks) and also sets
-# SKIP_POST_GENERATE as a second guard.
+# opens (or refreshes) a `chore/copier-update` pull request. It must NEVER
+# run the template's post-generation task (git init / initial commit / repo
+# creation) — that only belongs at project creation. Copier requires
+# --trust to apply an update when the template declares tasks (without it
+# the whole update aborts), so the job passes --trust but sets
+# SKIP_POST_GENERATE, which makes post_generate.py a no-op.
 #
 # Auth: uses the built-in GITHUB_TOKEN through the `gh` CLI — nothing to set
 # up. Two things to know:
@@ -40,9 +41,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # No --trust → Copier skips template tasks/migrations (safe for an
-          # unattended run); --defaults answers any newly added questions.
-          uvx copier update --defaults
+          # --trust lets Copier apply updates from a template that declares
+          # tasks; SKIP_POST_GENERATE (set above) neuters the post-generation
+          # task so nothing destructive runs. --defaults answers any newly
+          # added questions non-interactively.
+          uvx copier update --defaults --trust
       - name: Open or refresh pull request
         env:
           GH_TOKEN: {% raw %}${{ github.token }}{% endraw %}
