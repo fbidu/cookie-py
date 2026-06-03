@@ -113,6 +113,7 @@ _exclude:
   - "*.pyc"
   - "{% if ci_provider != 'github' %}.github/workflows/ci.yml{% endif %}"
   - "{% if ci_provider != 'github' %}.github/workflows/build.yml{% endif %}"
+  - "{% if ci_provider != 'github' %}.github/workflows/copier-update.yml{% endif %}"
   - "{% if ci_provider != 'gitlab' %}.gitlab-ci.yml{% endif %}"
   - "{% if dependency_updates != 'renovate' %}renovate.json{% endif %}"
   - "{% if dependency_updates != 'renovate' or ci_provider != 'github' %}.github/workflows/renovate.yml{% endif %}"
