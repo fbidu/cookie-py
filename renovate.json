@@ -25,6 +25,13 @@
       "matchFileNames": ["template/**"],
       "addLabels": ["template"],
       "semanticCommitScope": "template"
+    },
+    {
+      "description": "Keep GitHub Actions on floating major tags (e.g. @v6); the tag tracks minor/patch at runtime, so only raise PRs for major bumps",
+      "matchFileNames": [".github/workflows/**", "template/.github/workflows/**"],
+      "matchDatasources": ["github-tags"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "enabled": false
     }
   ]
 }
