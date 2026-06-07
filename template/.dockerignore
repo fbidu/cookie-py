@@ -46,6 +46,6 @@ COPYING
 tests/
 .pre-commit-config.yaml
 .github/
-.gitlab-ci.yml
+.forgejo/
 Dockerfile
 .dockerignore

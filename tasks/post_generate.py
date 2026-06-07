@@ -164,18 +164,40 @@ def write_license(template_src: Path, license_id: str, author: str) -> None:
     Path("LICENSE").write_text(text)
 
 
-def setup_gitlab_repo() -> None:
-    """Create a GitLab project via glab and add it as the origin remote."""
-    if not which("glab"):
-        log.warning("glab not found on PATH; skipping GitLab repo creation.")
+def setup_forge_repo() -> None:
+    """Create a Forgejo repo via tea and add it as the origin remote.
+
+    tea (the Gitea/Forgejo CLI) only creates the remote repo — unlike glab it
+    does not wire up a git remote — so we read the SSH URL back from its JSON
+    output and add ``origin`` ourselves. That URL carries the instance's real
+    SSH port, which hardcoding would get wrong. (fj, the Forgejo-native CLI, is
+    a future alternative.)
+    """
+    if not which("tea"):
+        log.warning("tea not found on PATH; skipping Forgejo repo creation.")
         return
     try:
-        subprocess.run(
-            ["glab", "repo", "create", "--defaultBranch", "main"],
+        result = subprocess.run(
+            ["tea", "repos", "create", "--name", Path.cwd().name, "--private", "-o", "json"],
             check=True,
+            capture_output=True,
+            text=True,
         )
     except subprocess.CalledProcessError as e:
-        log.warning("glab repo create failed (%s); skipping remote setup.", e)
+        log.warning("tea repos create failed (%s); skipping remote setup.", e)
+        return
+    try:
+        repo = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        log.warning("Could not parse tea output (%s); skipping remote setup.", e)
+        return
+    # tea trims the repo object; the SSH URL lands under "ssh" (older/newer
+    # builds may use the raw API's "ssh_url"/"clone_url" instead).
+    ssh_url = repo.get("ssh") or repo.get("ssh_url") or repo.get("clone_url")
+    if not ssh_url:
+        log.warning("tea output had no SSH URL; skipping remote setup.")
+        return
+    subprocess.run(["git", "remote", "add", "origin", ssh_url], check=False)
 
 
 def main() -> None:
@@ -207,8 +229,8 @@ def main() -> None:
 
         initial_commit()
 
-        if ci_provider == "gitlab":
-            setup_gitlab_repo()
+        if ci_provider == "forgejo":
+            setup_forge_repo()
 
         print("Project setup completed successfully!")
 

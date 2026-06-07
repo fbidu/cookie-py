@@ -1,0 +1,77 @@
+---
+# Weekly check for upstream template updates via Copier (Forgejo Actions).
+#
+# When the template recorded in .copier-answers.yml has newer changes, this
+# opens (or refreshes) a `copier-update` pull request. It must NEVER run the
+# template's post-generation task (git init / initial commit / repo creation) —
+# that only belongs at project creation. Copier requires --trust to apply an
+# update from a template that declares tasks (without it the whole update
+# aborts), so the job passes --trust but sets SKIP_POST_GENERATE, which makes
+# post_generate.py a no-op.
+#
+# Auth: a COPIER_UPDATE_TOKEN secret — a Forgejo access token (Settings >
+# Applications) with repository read/write — saved as a repository (or org)
+# Actions secret. The pull request is opened by pushing to refs/for/<branch>
+# (Forgejo's AGit flow), so no extra CLI is needed.
+name: Copier Update
+
+on:
+  schedule:
+    - cron: "0 6 * * 4"  # Thursdays 06:00 UTC (offset from Renovate's Monday run)
+  workflow_dispatch: {}
+
+# A scheduled run and a manual one shouldn't fight over the update.
+concurrency:
+  group: copier-update
+  cancel-in-progress: true
+
+jobs:
+  copier-update:
+    runs-on: homelab
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Persist the token so the later AGit `git push` is authenticated.
+          token: {% raw %}${{ secrets.COPIER_UPDATE_TOKEN }}{% endraw %}
+
+      - name: Install uv
+        # PEP 668: the job container's Python is externally managed.
+        run: pip install --no-cache-dir --break-system-packages uv
+
+      - name: Run copier update
+        env:
+          SKIP_POST_GENERATE: "1"
+        run: |
+          git config user.name "copier-update"
+          git config user.email "copier-update@noreply.localhost"
+          # --trust lets Copier apply updates from a template that declares
+          # tasks; SKIP_POST_GENERATE (above) neuters the post-generation task
+          # so nothing destructive runs. --defaults answers any newly added
+          # questions non-interactively.
+          uvx copier update --defaults --trust
+
+      - name: Open or refresh pull request (AGit)
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No template changes — nothing to do."
+            exit 0
+          fi
+          # copier's 3-way merge can leave conflict markers and an unmerged
+          # index. Record whether that happened, then `git add -A` (which also
+          # resolves the index) so the conflicts ride along in the PR instead of
+          # crashing the job — a human resolves them there.
+          CONFLICTS="$(git ls-files --unmerged)"
+          git add -A
+          git commit -m "chore: update from template via copier"
+          DESCRIPTION="Automated copier update. Review the changes before merging."
+          if [ -n "$CONFLICTS" ]; then
+            DESCRIPTION="Automated copier update that hit merge conflicts. Resolve the conflict markers (<<<<<<< / >>>>>>>) before merging."
+          fi
+          # Forgejo AGit: pushing to refs/for/<branch> opens a PR; the topic
+          # makes it idempotent (the same PR is refreshed on later runs).
+          git push origin HEAD:refs/for/main \
+            -o topic=copier-update \
+            -o title="chore: copier template update" \
+            -o description="$DESCRIPTION" \
+            -o force-push

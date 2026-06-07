@@ -53,16 +53,16 @@ Activate it with **one** of these (using both causes duplicate PRs):
 
 - **Hosted app (recommended):** install the [Renovate GitHub App](https://github.com/apps/renovate) — free for public and private repos — then delete `.github/workflows/renovate.yml`.
 - **Self-hosted:** keep the bundled `.github/workflows/renovate.yml` and add a `RENOVATE_TOKEN` repository secret (a PAT with `repo` + `workflow` scopes, or a GitHub App token).
-{% elif ci_provider == "gitlab" %}
+{% elif ci_provider == "forgejo" %}
 To activate it:
 
-1. Add a masked `RENOVATE_TOKEN` CI/CD variable — a Project or Group Access Token with the `api` scope and Maintainer role.
-2. Create a **pipeline schedule** (e.g. weekly) on your default branch. The `renovate` job runs only on scheduled pipelines.
+1. Create a `RENOVATE_TOKEN` — a Forgejo access token (Settings → Applications) with read/write on repositories. Save it as a repository (or organization) **Actions secret**.
+2. The bundled `.forgejo/workflows/renovate.yml` runs weekly (and on demand via *Run workflow*). Adjust its schedule if you like.
 {% else %}
 Point a Renovate runner — the [hosted app](https://github.com/apps/renovate) or a scheduled CI job — at this repo and it will pick up `renovate.json`.
 {% endif %}
 {% endif %}
-{% if ci_provider == "github" or ci_provider == "gitlab" %}
+{% if ci_provider == "github" or ci_provider == "forgejo" %}
 ### Template updates
 
 This project was generated from [cookie-py](https://github.com/fbidu/cookie-py) with [Copier](https://copier.readthedocs.io/), which records the template version in `.copier-answers.yml`. Pull later template changes anytime with:
@@ -71,12 +71,11 @@ This project was generated from [cookie-py](https://github.com/fbidu/cookie-py) 
 copier update --trust
 ```
 
-A scheduled job also checks weekly and opens a {% if ci_provider == "github" %}PR{% else %}merge request{% endif %} when the template has newer changes. To enable it:
+A scheduled job also checks weekly and opens a PR when the template has newer changes. To enable it:
 {% if ci_provider == "github" %}
 - Add a `COPIER_UPDATE_TOKEN` repository secret — a PAT with `repo` + `workflow` scopes. The `workflow` scope is required because updates can touch files under `.github/workflows/`, which the built-in `GITHUB_TOKEN` cannot push.
-{% elif ci_provider == "gitlab" %}
-1. Add a masked `COPIER_UPDATE_TOKEN` CI/CD variable — a Project or Group Access Token with `api` + `write_repository` scopes.
-2. Create a **pipeline schedule** on your default branch (the `copier-update` job runs only on scheduled pipelines).
+{% elif ci_provider == "forgejo" %}
+- Add a `COPIER_UPDATE_TOKEN` **Actions secret** — a Forgejo access token (Settings → Applications) with repository read/write. The scheduled `.forgejo/workflows/copier-update.yml` opens the PR via Forgejo's AGit push, so no extra CLI is needed.
 {% endif %}
 {% endif %}
 
@@ -126,16 +125,16 @@ Ative com **uma** destas opções (usar as duas gera PRs duplicados):
 
 - **App hospedado (recomendado):** instale o [Renovate GitHub App](https://github.com/apps/renovate) — gratuito para repositórios públicos e privados — e então remova o `.github/workflows/renovate.yml`.
 - **Auto-hospedado:** mantenha o `.github/workflows/renovate.yml` incluído e adicione um secret `RENOVATE_TOKEN` (um PAT com escopos `repo` + `workflow`, ou um token de GitHub App).
-{% elif ci_provider == "gitlab" %}
+{% elif ci_provider == "forgejo" %}
 Para ativar:
 
-1. Adicione uma variável CI/CD mascarada `RENOVATE_TOKEN` — um Project/Group Access Token com escopo `api` e papel Maintainer.
-2. Crie um **agendamento de pipeline** (ex.: semanal) na sua branch padrão. O job `renovate` roda apenas em pipelines agendados.
+1. Crie um `RENOVATE_TOKEN` — um token de acesso do Forgejo (Settings → Applications) com leitura/escrita em repositórios. Salve-o como um **Actions secret** do repositório (ou da organização).
+2. O `.forgejo/workflows/renovate.yml` incluído roda semanalmente (e sob demanda via *Run workflow*). Ajuste o agendamento se quiser.
 {% else %}
 Aponte um runner do Renovate — o [app hospedado](https://github.com/apps/renovate) ou um job de CI agendado — para este repositório e ele usará o `renovate.json`.
 {% endif %}
 {% endif %}
-{% if ci_provider == "github" or ci_provider == "gitlab" %}
+{% if ci_provider == "github" or ci_provider == "forgejo" %}
 ### Atualização do template
 
 Este projeto foi gerado a partir do [cookie-py](https://github.com/fbidu/cookie-py) com o [Copier](https://copier.readthedocs.io/), que registra a versão do template em `.copier-answers.yml`. Traga mudanças posteriores do template a qualquer momento com:
@@ -144,12 +143,11 @@ Este projeto foi gerado a partir do [cookie-py](https://github.com/fbidu/cookie-
 copier update --trust
 ```
 
-Um job agendado também verifica semanalmente e abre {% if ci_provider == "github" %}um PR{% else %}um merge request{% endif %} quando o template tem novidades. Para ativar:
+Um job agendado também verifica semanalmente e abre um PR quando o template tem novidades. Para ativar:
 {% if ci_provider == "github" %}
 - Adicione um secret `COPIER_UPDATE_TOKEN` — um PAT com escopos `repo` + `workflow`. O escopo `workflow` é necessário porque atualizações podem mexer em arquivos sob `.github/workflows/`, que o `GITHUB_TOKEN` embutido não consegue enviar.
-{% elif ci_provider == "gitlab" %}
-1. Adicione uma variável CI/CD mascarada `COPIER_UPDATE_TOKEN` — um Project/Group Access Token com escopos `api` + `write_repository`.
-2. Crie um **agendamento de pipeline** na sua branch padrão (o job `copier-update` roda apenas em pipelines agendados).
+{% elif ci_provider == "forgejo" %}
+- Adicione um **Actions secret** `COPIER_UPDATE_TOKEN` — um token de acesso do Forgejo (Settings → Applications) com leitura/escrita em repositórios. O `.forgejo/workflows/copier-update.yml` agendado abre o PR via push AGit do Forgejo, sem precisar de CLI extra.
 {% endif %}
 {% endif %}
 
