@@ -43,7 +43,7 @@ _Itens marcados estão implementados!_
 * [x] Executar Pytest pre-push
 * [x] Relatório de Coverage no Pytest
 * [x] Configurações modernas em pyproject.toml
-* [x] Pipeline de CI opcional (GitHub Actions ou GitLab CI)
+* [x] Pipeline de CI opcional (GitHub Actions ou Forgejo Actions)
 * [x] Atualização de projetos existentes com `copier update`
 
 ### Hooks Habilitados
@@ -90,7 +90,7 @@ _Checked items are implemented_
 * [x] Run Pytest pre-push
 * [x] Coverage report on Pytest
 * [x] Modern pyproject.toml configuration
-* [x] Optional CI pipeline (GitHub Actions or GitLab CI)
+* [x] Optional CI pipeline (GitHub Actions or Forgejo Actions)
 * [x] Update existing projects with `copier update`
 
 ### Hooks

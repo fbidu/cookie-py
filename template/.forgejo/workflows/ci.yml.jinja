@@ -1,0 +1,44 @@
+---
+# CI — Forgejo Actions. Runs the full prek suite (lint + type-check + tests) in
+# one job: the same gate the pre-commit / pre-push hooks give developers.
+#
+# `runs-on: homelab` must match a label your act_runner registers. That runner
+# image is expected to provide git + node (for JS actions like checkout/cache)
+# + python/pip; uv and the project's dev tools install at runtime — no baked CI
+# image, matching the homelab "no CI registry" convention. Action refs are
+# pinned at @v4 (what the instance's default actions URL mirrors).
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  prek:
+    runs-on: homelab
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        # PEP 668: the job container's Python is externally managed.
+        run: pip install --no-cache-dir --break-system-packages uv
+
+      - name: Install Python {{ python_version }}
+        run: uv python install {{ python_version }}
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Cache prek hook environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/prek
+          key: prek-{% raw %}${{ hashFiles('.pre-commit-config.yaml') }}{% endraw %}
+
+      - name: prek (commit stage)
+        run: uv run prek run --all-files --show-diff-on-failure --hook-stage pre-commit
+
+      - name: prek (push stage — pytest)
+        run: uv run prek run --all-files --show-diff-on-failure --hook-stage pre-push
