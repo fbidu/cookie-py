@@ -43,7 +43,21 @@ def _generate_project(
     effective_data = {**DEFAULT_DATA, **(data or {})}
     data_args = _build_data_args(effective_data)
 
-    cmd = ["copier", "copy", "--defaults", "--trust", *data_args, TEMPLATE_DIR, str(dest)]
+    # Pin the source ref to the current commit. Copier defaults vcs_ref to the
+    # latest git tag, so without this the suite would test the last *release*
+    # (e.g. v0.2.6) instead of the working tree — masking unreleased template
+    # changes locally while a tagless CI checkout silently falls back to HEAD.
+    cmd = [
+        "copier",
+        "copy",
+        "--vcs-ref",
+        "HEAD",
+        "--defaults",
+        "--trust",
+        *data_args,
+        TEMPLATE_DIR,
+        str(dest),
+    ]
     env = {**os.environ, "SKIP_POST_GENERATE": "1"}
 
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
@@ -94,8 +108,8 @@ class TestCopierGeneration:
         for file_path in essential_files:
             assert (generated_project / file_path).exists(), f"Missing file: {file_path}"
 
-        # GitLab CI must not exist when ci_provider=github
-        assert not (generated_project / ".gitlab-ci.yml").exists()
+        # Forgejo workflows must not exist when ci_provider=github
+        assert not (generated_project / ".forgejo/workflows/ci.yml").exists()
 
     def test_template_variables_rendered(self, generated_project: Path) -> None:
         """Test that template variables are properly rendered in output files."""
@@ -213,31 +227,35 @@ class TestCIProviderGeneration:
     """Test conditional CI file generation based on ci_provider."""
 
     def test_github_files_generated(self, tmp_path: Path) -> None:
-        """ci_provider=github generates the GitHub workflows and nothing GitLab."""
+        """ci_provider=github generates the GitHub workflows and nothing Forgejo."""
         project_dir = _generate_project(tmp_path / "github", {"ci_provider": "github"})
         assert (project_dir / ".github/workflows/ci.yml").exists()
         assert (project_dir / ".github/workflows/build.yml").exists()
-        assert not (project_dir / ".gitlab-ci.yml").exists()
+        assert not (project_dir / ".forgejo/workflows/ci.yml").exists()
 
-    def test_gitlab_files_generated(self, tmp_path: Path) -> None:
-        """ci_provider=gitlab generates .gitlab-ci.yml and no GitHub workflows."""
-        project_dir = _generate_project(tmp_path / "gitlab", {"ci_provider": "gitlab"})
-        assert (project_dir / ".gitlab-ci.yml").exists()
+    def test_forgejo_files_generated(self, tmp_path: Path) -> None:
+        """ci_provider=forgejo generates .forgejo/workflows and no GitHub workflows."""
+        project_dir = _generate_project(tmp_path / "forgejo", {"ci_provider": "forgejo"})
+        assert (project_dir / ".forgejo/workflows/ci.yml").exists()
+        assert (project_dir / ".forgejo/workflows/copier-update.yml").exists()
         assert not (project_dir / ".github/workflows/ci.yml").exists()
         assert not (project_dir / ".github/workflows/build.yml").exists()
+        # No image-build / CI registry job — the homelab runner can't build images.
+        assert not (project_dir / ".forgejo/workflows/build.yml").exists()
 
-        gitlab_ci = (project_dir / ".gitlab-ci.yml").read_text()
-        assert "3.12" in gitlab_ci
-        # CD was nuked — no Portainer webhook, no deploy stage
-        assert "PORTAINER_WEBHOOK_URL" not in gitlab_ci
-        assert "deploy" not in gitlab_ci.split("stages:")[1].split("variables:")[0]
+        ci_yml = (project_dir / ".forgejo/workflows/ci.yml").read_text()
+        assert "runs-on: homelab" in ci_yml
+        assert "uv python install 3.12" in ci_yml
+        # Forgejo Actions expressions ({% raw %}…{% endraw %}) should survive verbatim.
+        assert "${{ hashFiles(" in ci_yml
+        assert "{% raw %}" not in ci_yml, "Unrendered jinja raw block found"
 
     def test_no_ci_generates_nothing(self, tmp_path: Path) -> None:
-        """ci_provider=none produces no CI files for either provider."""
+        """ci_provider=none produces no CI files for any provider."""
         project_dir = _generate_project(tmp_path / "none", {"ci_provider": "none"})
         assert not (project_dir / ".github/workflows/ci.yml").exists()
         assert not (project_dir / ".github/workflows/build.yml").exists()
-        assert not (project_dir / ".gitlab-ci.yml").exists()
+        assert not (project_dir / ".forgejo/workflows/ci.yml").exists()
 
 
 class TestDependencyUpdates:
@@ -258,18 +276,18 @@ class TestDependencyUpdates:
         assert "${{ github.repository }}" in wf
         assert "{% raw %}" not in wf, "Unrendered jinja raw block found"
 
-    def test_gitlab_ships_config_and_pipeline_job(self, tmp_path: Path) -> None:
-        """gitlab + renovate ships renovate.json and a scheduled pipeline job (no GH workflow)."""
+    def test_forgejo_ships_config_and_workflow(self, tmp_path: Path) -> None:
+        """forgejo + renovate ships renovate.json and a scheduled Renovate workflow (no GH workflow)."""
         project_dir = _generate_project(
-            tmp_path / "gl-renovate",
-            {"ci_provider": "gitlab", "dependency_updates": "renovate"},
+            tmp_path / "fj-renovate",
+            {"ci_provider": "forgejo", "dependency_updates": "renovate"},
         )
         assert (project_dir / "renovate.json").exists()
         assert not (project_dir / ".github/workflows/renovate.yml").exists()
-        gitlab_ci = (project_dir / ".gitlab-ci.yml").read_text()
-        assert "renovate:" in gitlab_ci
-        assert "maintenance" in gitlab_ci
-        assert "if: '$CI_PIPELINE_SOURCE == \"schedule\"'" in gitlab_ci
+        renovate_wf = (project_dir / ".forgejo/workflows/renovate.yml").read_text()
+        assert "RENOVATE_PLATFORM: forgejo" in renovate_wf
+        assert "runs-on: homelab" in renovate_wf
+        assert "schedule:" in renovate_wf
 
     def test_none_ships_nothing(self, tmp_path: Path) -> None:
         """dependency_updates=none ships no Renovate config or runner."""
