@@ -43,7 +43,21 @@ def _generate_project(
     effective_data = {**DEFAULT_DATA, **(data or {})}
     data_args = _build_data_args(effective_data)
 
-    cmd = ["copier", "copy", "--defaults", "--trust", *data_args, TEMPLATE_DIR, str(dest)]
+    # Pin the source ref to the current commit. Copier defaults vcs_ref to the
+    # latest git tag, so without this the suite would test the last *release*
+    # (e.g. v0.2.6) instead of the working tree — masking unreleased template
+    # changes locally while a tagless CI checkout silently falls back to HEAD.
+    cmd = [
+        "copier",
+        "copy",
+        "--vcs-ref",
+        "HEAD",
+        "--defaults",
+        "--trust",
+        *data_args,
+        TEMPLATE_DIR,
+        str(dest),
+    ]
     env = {**os.environ, "SKIP_POST_GENERATE": "1"}
 
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
