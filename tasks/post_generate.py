@@ -5,6 +5,7 @@ Sets up git, installs dependencies, configures prek, and creates initial commit.
 
 import json
 import logging
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -168,17 +169,18 @@ def setup_forge_repo() -> None:
     """Create a Forgejo repo via tea and add it as the origin remote.
 
     tea (the Gitea/Forgejo CLI) only creates the remote repo — unlike glab it
-    does not wire up a git remote — so we read the SSH URL back from its JSON
-    output and add ``origin`` ourselves. That URL carries the instance's real
-    SSH port, which hardcoding would get wrong. (fj, the Forgejo-native CLI, is
-    a future alternative.)
+    does not wire up a git remote — so we scrape the clone URL from its output
+    and add ``origin`` ourselves. That URL carries the instance's real SSH port,
+    which hardcoding would get wrong. (``tea repos create`` ignores ``-o json``
+    and always prints a human-readable summary, so we match the URL rather than
+    parse JSON. fj, the Forgejo-native CLI, is a future alternative.)
     """
     if not which("tea"):
         log.warning("tea not found on PATH; skipping Forgejo repo creation.")
         return
     try:
         result = subprocess.run(
-            ["tea", "repos", "create", "--name", Path.cwd().name, "--private", "-o", "json"],
+            ["tea", "repos", "create", "--name", Path.cwd().name, "--private"],
             check=True,
             capture_output=True,
             text=True,
@@ -186,18 +188,14 @@ def setup_forge_repo() -> None:
     except subprocess.CalledProcessError as e:
         log.warning("tea repos create failed (%s); skipping remote setup.", e)
         return
-    try:
-        repo = json.loads(result.stdout)
-    except json.JSONDecodeError as e:
-        log.warning("Could not parse tea output (%s); skipping remote setup.", e)
+    # tea's summary has a "Clone:" line; pull the SSH (preferred) or HTTPS URL.
+    match = re.search(r"ssh://\S+?\.git", result.stdout) or re.search(
+        r"https?://\S+?\.git", result.stdout
+    )
+    if not match:
+        log.warning("No clone URL found in tea output; skipping remote setup.")
         return
-    # tea trims the repo object; the SSH URL lands under "ssh" (older/newer
-    # builds may use the raw API's "ssh_url"/"clone_url" instead).
-    ssh_url = repo.get("ssh") or repo.get("ssh_url") or repo.get("clone_url")
-    if not ssh_url:
-        log.warning("tea output had no SSH URL; skipping remote setup.")
-        return
-    subprocess.run(["git", "remote", "add", "origin", ssh_url], check=False)
+    subprocess.run(["git", "remote", "add", "origin", match.group()], check=False)
 
 
 def main() -> None:
