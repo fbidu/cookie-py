@@ -57,7 +57,8 @@ Activate it with **one** of these (using both causes duplicate PRs):
 To activate it:
 
 1. Create a `RENOVATE_TOKEN` — a Forgejo access token (Settings → Applications) with scopes `read:user`, `write:repository`, `write:issue`, and `read:organization` (a repository-only token fails, because Renovate's init reads your user, issues, and org labels). Save it as a repository, organization, or user-level **Actions secret** — org/user-level covers every repo in that scope.
-2. The bundled `.forgejo/workflows/renovate.yml` runs weekly (and on demand via *Run workflow*). Adjust its schedule if you like.
+2. *(Optional)* add a read-only github.com PAT as a `GITHUB_COM_TOKEN` secret so Renovate can fetch changelogs/versions for github-hosted dependencies (e.g. `actions/*`) without hitting github.com rate limits.
+3. The bundled `.forgejo/workflows/renovate.yml` runs weekly (and on demand via *Run workflow*). Adjust its schedule if you like.
 {% else %}
 Point a Renovate runner — the [hosted app](https://github.com/apps/renovate) or a scheduled CI job — at this repo and it will pick up `renovate.json`.
 {% endif %}
@@ -129,7 +130,8 @@ Ative com **uma** destas opções (usar as duas gera PRs duplicados):
 Para ativar:
 
 1. Crie um `RENOVATE_TOKEN` — um token de acesso do Forgejo (Settings → Applications) com os escopos `read:user`, `write:repository`, `write:issue` e `read:organization` (um token só de repositório falha, porque a inicialização do Renovate lê seu usuário, issues e labels da organização). Salve-o como um **Actions secret** de repositório, organização ou usuário — o nível de organização/usuário cobre todos os repos daquele escopo.
-2. O `.forgejo/workflows/renovate.yml` incluído roda semanalmente (e sob demanda via *Run workflow*). Ajuste o agendamento se quiser.
+2. *(Opcional)* adicione um PAT somente-leitura do github.com como secret `GITHUB_COM_TOKEN` para que o Renovate busque changelogs/versões de dependências hospedadas no github (ex.: `actions/*`) sem esbarrar nos limites de taxa do github.com.
+3. O `.forgejo/workflows/renovate.yml` incluído roda semanalmente (e sob demanda via *Run workflow*). Ajuste o agendamento se quiser.
 {% else %}
 Aponte um runner do Renovate — o [app hospedado](https://github.com/apps/renovate) ou um job de CI agendado — para este repositório e ele usará o `renovate.json`.
 {% endif %}

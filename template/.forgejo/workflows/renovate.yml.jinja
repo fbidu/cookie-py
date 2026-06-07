@@ -11,7 +11,10 @@
 #   2. Save it as a repository, organization, or user-level Actions secret named
 #      RENOVATE_TOKEN (Settings > Actions > Secrets). Org/user-level covers every
 #      repo in that scope, so you set it once.
-#   3. (Optional) adjust the schedule below; trigger manually from the Actions
+#   3. (Optional) add a read-only github.com PAT as a GITHUB_COM_TOKEN secret so
+#      Renovate can fetch changelogs/versions for github-hosted deps (actions/*,
+#      etc.) without hitting api.github.com's unauthenticated rate limit.
+#   4. (Optional) adjust the schedule below; trigger manually from the Actions
 #      tab via "Run workflow".
 #
 # RENOVATE_ENDPOINT is derived from the running instance, so this works on any
@@ -38,5 +41,8 @@ jobs:
           RENOVATE_TOKEN: {% raw %}${{ secrets.RENOVATE_TOKEN }}{% endraw %}
           RENOVATE_REPOSITORIES: {% raw %}${{ github.repository }}{% endraw %}
           RENOVATE_AUTODISCOVER: "false"
+          # Optional read-only github.com PAT for changelog/version lookups of
+          # github-hosted deps; harmless (treated as unset) if the secret is absent.
+          GITHUB_COM_TOKEN: {% raw %}${{ secrets.GITHUB_COM_TOKEN }}{% endraw %}
           LOG_LEVEL: info
         run: renovate
