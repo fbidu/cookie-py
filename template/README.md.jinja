@@ -56,7 +56,7 @@ Activate it with **one** of these (using both causes duplicate PRs):
 {% elif ci_provider == "forgejo" %}
 To activate it:
 
-1. Create a `RENOVATE_TOKEN` — a Forgejo access token (Settings → Applications) with read/write on repositories. Save it as a repository (or organization) **Actions secret**.
+1. Create a `RENOVATE_TOKEN` — a Forgejo access token (Settings → Applications) with scopes `read:user`, `write:repository`, `write:issue`, and `read:organization` (a repository-only token fails, because Renovate's init reads your user, issues, and org labels). Save it as a repository, organization, or user-level **Actions secret** — org/user-level covers every repo in that scope.
 2. The bundled `.forgejo/workflows/renovate.yml` runs weekly (and on demand via *Run workflow*). Adjust its schedule if you like.
 {% else %}
 Point a Renovate runner — the [hosted app](https://github.com/apps/renovate) or a scheduled CI job — at this repo and it will pick up `renovate.json`.
@@ -128,7 +128,7 @@ Ative com **uma** destas opções (usar as duas gera PRs duplicados):
 {% elif ci_provider == "forgejo" %}
 Para ativar:
 
-1. Crie um `RENOVATE_TOKEN` — um token de acesso do Forgejo (Settings → Applications) com leitura/escrita em repositórios. Salve-o como um **Actions secret** do repositório (ou da organização).
+1. Crie um `RENOVATE_TOKEN` — um token de acesso do Forgejo (Settings → Applications) com os escopos `read:user`, `write:repository`, `write:issue` e `read:organization` (um token só de repositório falha, porque a inicialização do Renovate lê seu usuário, issues e labels da organização). Salve-o como um **Actions secret** de repositório, organização ou usuário — o nível de organização/usuário cobre todos os repos daquele escopo.
 2. O `.forgejo/workflows/renovate.yml` incluído roda semanalmente (e sob demanda via *Run workflow*). Ajuste o agendamento se quiser.
 {% else %}
 Aponte um runner do Renovate — o [app hospedado](https://github.com/apps/renovate) ou um job de CI agendado — para este repositório e ele usará o `renovate.json`.
