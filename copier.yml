@@ -94,7 +94,7 @@ ci_provider:
   choices:
     "No CI": "none"
     "GitHub Actions": "github"
-    "GitLab CI": "gitlab"
+    "Forgejo Actions": "forgejo"
 
 dependency_updates:
   type: str
@@ -114,6 +114,8 @@ _exclude:
   - "{% if ci_provider != 'github' %}.github/workflows/ci.yml{% endif %}"
   - "{% if ci_provider != 'github' %}.github/workflows/build.yml{% endif %}"
   - "{% if ci_provider != 'github' %}.github/workflows/copier-update.yml{% endif %}"
-  - "{% if ci_provider != 'gitlab' %}.gitlab-ci.yml{% endif %}"
+  - "{% if ci_provider != 'forgejo' %}.forgejo/workflows/ci.yml{% endif %}"
+  - "{% if ci_provider != 'forgejo' %}.forgejo/workflows/copier-update.yml{% endif %}"
   - "{% if dependency_updates != 'renovate' %}renovate.json{% endif %}"
   - "{% if dependency_updates != 'renovate' or ci_provider != 'github' %}.github/workflows/renovate.yml{% endif %}"
+  - "{% if dependency_updates != 'renovate' or ci_provider != 'forgejo' %}.forgejo/workflows/renovate.yml{% endif %}"

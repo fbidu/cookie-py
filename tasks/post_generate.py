@@ -5,6 +5,7 @@ Sets up git, installs dependencies, configures prek, and creates initial commit.
 
 import json
 import logging
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -164,18 +165,37 @@ def write_license(template_src: Path, license_id: str, author: str) -> None:
     Path("LICENSE").write_text(text)
 
 
-def setup_gitlab_repo() -> None:
-    """Create a GitLab project via glab and add it as the origin remote."""
-    if not which("glab"):
-        log.warning("glab not found on PATH; skipping GitLab repo creation.")
+def setup_forge_repo() -> None:
+    """Create a Forgejo repo via tea and add it as the origin remote.
+
+    tea (the Gitea/Forgejo CLI) only creates the remote repo — unlike glab it
+    does not wire up a git remote — so we scrape the clone URL from its output
+    and add ``origin`` ourselves. That URL carries the instance's real SSH port,
+    which hardcoding would get wrong. (``tea repos create`` ignores ``-o json``
+    and always prints a human-readable summary, so we match the URL rather than
+    parse JSON. fj, the Forgejo-native CLI, is a future alternative.)
+    """
+    if not which("tea"):
+        log.warning("tea not found on PATH; skipping Forgejo repo creation.")
         return
     try:
-        subprocess.run(
-            ["glab", "repo", "create", "--defaultBranch", "main"],
+        result = subprocess.run(
+            ["tea", "repos", "create", "--name", Path.cwd().name, "--private"],
             check=True,
+            capture_output=True,
+            text=True,
         )
     except subprocess.CalledProcessError as e:
-        log.warning("glab repo create failed (%s); skipping remote setup.", e)
+        log.warning("tea repos create failed (%s); skipping remote setup.", e)
+        return
+    # tea's summary has a "Clone:" line; pull the SSH (preferred) or HTTPS URL.
+    match = re.search(r"ssh://\S+?\.git", result.stdout) or re.search(
+        r"https?://\S+?\.git", result.stdout
+    )
+    if not match:
+        log.warning("No clone URL found in tea output; skipping remote setup.")
+        return
+    subprocess.run(["git", "remote", "add", "origin", match.group()], check=False)
 
 
 def main() -> None:
@@ -207,8 +227,8 @@ def main() -> None:
 
         initial_commit()
 
-        if ci_provider == "gitlab":
-            setup_gitlab_repo()
+        if ci_provider == "forgejo":
+            setup_forge_repo()
 
         print("Project setup completed successfully!")
 
