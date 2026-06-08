@@ -166,7 +166,7 @@ def write_license(template_src: Path, license_id: str, author: str) -> None:
 
 
 def setup_forge_repo() -> None:
-    """Create a Forgejo repo via tea and add it as the origin remote.
+    """Create a Forgejo repo via tea, add it as the origin remote, and push.
 
     tea (the Gitea/Forgejo CLI) only creates the remote repo — unlike glab it
     does not wire up a git remote — so we scrape the clone URL from its output
@@ -196,6 +196,17 @@ def setup_forge_repo() -> None:
         log.warning("No clone URL found in tea output; skipping remote setup.")
         return
     subprocess.run(["git", "remote", "add", "origin", match.group()], check=False)
+    push = subprocess.run(
+        ["git", "push", "-u", "origin", "main"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if push.returncode != 0:
+        log.warning(
+            "git push failed; push manually with 'git push -u origin main'.\n%s",
+            push.stderr.strip(),
+        )
 
 
 def main() -> None:

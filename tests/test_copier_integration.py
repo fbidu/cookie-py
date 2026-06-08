@@ -94,6 +94,7 @@ class TestCopierGeneration:
             "pyproject.toml",
             "README.md",
             ".gitignore",
+            ".python-version",
             ".pre-commit-config.yaml",
             "Dockerfile",
             "CLAUDE.md",
@@ -121,6 +122,10 @@ class TestCopierGeneration:
         readme = (generated_project / "README.md").read_text()
         assert "My Awesome Project" in readme
         assert "{{" not in readme, "Unrendered template variable found"
+
+        # .python-version pins the exact chosen interpreter so uv sync doesn't
+        # drift up to a newer minor that merely satisfies requires-python's floor.
+        assert (generated_project / ".python-version").read_text().strip() == "3.12"
 
     def test_workflow_files_rendered_correctly(self, generated_project: Path) -> None:
         """Test that workflow files have rendered Copier vars and preserved GH Actions syntax."""
