@@ -76,6 +76,8 @@ line-ending = "auto"
 [tool.pyright]
 include = ["{{ pkg_name }}", "tests"]
 exclude = ["**/__pycache__"]
+venvPath = "."
+venv = ".venv"
 reportMissingTypeStubs = false
 reportUnknownParameterType = false
 reportUnknownArgumentType = false

@@ -209,6 +209,32 @@ def setup_forge_repo() -> None:
         )
 
 
+def setup_github_repo(visibility: str) -> None:
+    """Create a GitHub repo via gh, wire up origin, and push — in one shot.
+
+    Unlike tea, ``gh repo create --source=. --remote=origin --push`` creates the
+    remote repo, adds the origin remote, and pushes the initial commit on its
+    own, so there is no clone URL to scrape. ``visibility`` is ``private`` or
+    ``public``; gh takes it as the ``--private``/``--public`` flag.
+    """
+    if not which("gh"):
+        log.warning("gh not found on PATH; skipping GitHub repo creation.")
+        return
+    subprocess.run(
+        [
+            "gh",
+            "repo",
+            "create",
+            Path.cwd().name,
+            f"--{visibility}",
+            "--source=.",
+            "--remote=origin",
+            "--push",
+        ],
+        check=False,
+    )
+
+
 def main() -> None:
     """Main execution function."""
     import os
@@ -221,6 +247,7 @@ def main() -> None:
     license_id = _arg_value("--license")
     author = _arg_value("--author")
     template_src = _arg_value("--template-src")
+    repo_visibility = _arg_value("--repo-visibility") or "private"
 
     try:
         check_prerequisites()
@@ -240,6 +267,8 @@ def main() -> None:
 
         if ci_provider == "forgejo":
             setup_forge_repo()
+        elif ci_provider == "github":
+            setup_github_repo(repo_visibility)
 
         print("Project setup completed successfully!")
 
