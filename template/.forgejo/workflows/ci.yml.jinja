@@ -29,7 +29,7 @@ jobs:
         run: uv python install {{ python_version }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --all-extras
 
       - name: Cache prek hook environments
         uses: actions/cache@v4
