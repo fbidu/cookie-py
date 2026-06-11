@@ -17,6 +17,8 @@ _tasks:
       - "--template-src"
       - "{{ _copier_conf.src_path }}"
       - "{% if not enable_github_copilot %}--disable-copilot{% endif %}"
+      - "--repo-visibility"
+      - "{{ repo_visibility }}"
 
 # --- Project metadata ---
 
@@ -95,6 +97,15 @@ ci_provider:
     "No CI": "none"
     "GitHub Actions": "github"
     "Forgejo Actions": "forgejo"
+
+repo_visibility:
+  type: str
+  help: "Visibility for the auto-created GitHub repository"
+  default: "private"
+  choices:
+    "Private": "private"
+    "Public": "public"
+  when: "{{ ci_provider == 'github' }}"
 
 dependency_updates:
   type: str
