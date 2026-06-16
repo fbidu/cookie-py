@@ -245,11 +245,11 @@ class TestCIProviderGeneration:
         assert (project_dir / ".forgejo/workflows/copier-update.yml").exists()
         assert not (project_dir / ".github/workflows/ci.yml").exists()
         assert not (project_dir / ".github/workflows/build.yml").exists()
-        # No image-build / CI registry job — the homelab runner can't build images.
+        # No image-build / CI registry job — the Forgejo runner can't build images.
         assert not (project_dir / ".forgejo/workflows/build.yml").exists()
 
         ci_yml = (project_dir / ".forgejo/workflows/ci.yml").read_text()
-        assert "runs-on: homelab" in ci_yml
+        assert "runs-on: ubuntu-latest" in ci_yml
         assert "uv python install 3.12" in ci_yml
         # Forgejo Actions expressions ({% raw %}…{% endraw %}) should survive verbatim.
         assert "${{ hashFiles(" in ci_yml
@@ -291,7 +291,7 @@ class TestDependencyUpdates:
         assert not (project_dir / ".github/workflows/renovate.yml").exists()
         renovate_wf = (project_dir / ".forgejo/workflows/renovate.yml").read_text()
         assert "RENOVATE_PLATFORM: forgejo" in renovate_wf
-        assert "runs-on: homelab" in renovate_wf
+        assert "runs-on: ubuntu-latest" in renovate_wf
         assert "schedule:" in renovate_wf
 
     def test_none_ships_nothing(self, tmp_path: Path) -> None:
