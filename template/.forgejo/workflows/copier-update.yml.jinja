@@ -29,7 +29,7 @@ jobs:
   copier-update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
           # Persist the token so the later AGit `git push` is authenticated.
