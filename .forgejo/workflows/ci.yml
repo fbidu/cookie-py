@@ -1,0 +1,56 @@
+---
+# CI for the cookie-py template repo itself, on Forgejo Actions (the upstream
+# where development happens). Mirrors the GitHub test-template.yml gate — copier
+# integration tests across supported Pythons + prek — minus the Docker build job
+# (the homelab runner is privileged: false, so it can't run `docker build`).
+#
+# `runs-on: ubuntu-latest` must match a label the act_runner registers; the
+# runner provides git + node + python/pip and uv installs at runtime (no baked
+# CI image), matching the template's own .forgejo convention.
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-template:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install uv
+        # PEP 668: the runner's Python is externally managed.
+        run: pip install --no-cache-dir --break-system-packages uv
+      - name: Install Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Install copier and prek
+        run: |
+          uv tool install copier
+          uv tool install prek
+      - name: Install dependencies
+        run: uv sync --dev
+      - name: Run integration tests
+        run: uv run pytest tests/test_copier_integration.py -v
+
+  prek:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install uv
+        run: pip install --no-cache-dir --break-system-packages uv
+      - name: Install dependencies
+        run: uv sync --dev
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/prek
+          key: prek-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+      - name: prek (commit stage)
+        run: uv run prek run --all-files --show-diff-on-failure --hook-stage pre-commit
