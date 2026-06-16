@@ -2,11 +2,11 @@
 # CI — Forgejo Actions. Runs the full prek suite (lint + type-check + tests) in
 # one job: the same gate the pre-commit / pre-push hooks give developers.
 #
-# `runs-on: homelab` must match a label your act_runner registers. That runner
-# image is expected to provide git + node (for JS actions like checkout/cache)
-# + python/pip; uv and the project's dev tools install at runtime — no baked CI
-# image, matching the homelab "no CI registry" convention. Action refs are
-# pinned at @v4 (what the instance's default actions URL mirrors).
+# `runs-on: ubuntu-latest` must match a label your act_runner registers. That
+# runner image is expected to provide git + node (for JS actions like
+# checkout/cache) + python/pip; uv and the project's dev tools install at
+# runtime — no baked CI image, matching the "no CI registry" convention. Action
+# refs are pinned at @v4 (what the instance's default actions URL mirrors).
 name: CI
 
 on:
@@ -17,7 +17,7 @@ on:
 
 jobs:
   prek:
-    runs-on: homelab
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 

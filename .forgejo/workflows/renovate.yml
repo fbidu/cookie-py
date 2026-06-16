@@ -1,0 +1,43 @@
+---
+# Self-hosted Renovate for this repo, running on Forgejo Actions.
+#
+# This repo is developed on Forgejo (upstream) and mirrored to GitHub for public
+# consumption, so dependency-update PRs must be opened HERE, where they can be
+# merged and flow out to the mirror. This supersedes the hosted Renovate GitHub
+# App on the mirror — run only one, or you get duplicate PRs on each side.
+#
+# It runs on a schedule (and on demand) and reads the repo's renovate.json.
+#
+# Requires a RENOVATE_TOKEN secret: a Forgejo access token (Settings >
+# Applications) with scopes read:user, write:repository, write:issue,
+# read:organization. A repository-only token fails Renovate's init with
+# "Authentication failure". Set it at the repo, org, or user level
+# (Settings > Actions > Secrets). Optionally add a read-only github.com PAT as
+# GITHUB_COM_TOKEN so changelog/version lookups for github-hosted deps
+# (astral-sh/*, actions/*) don't hit the unauthenticated rate limit.
+#
+# RENOVATE_ENDPOINT is derived from the running instance, so no URL is hardcoded.
+name: Renovate
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    container:
+      image: renovate/renovate:latest
+    steps:
+      - name: Run Renovate
+        env:
+          RENOVATE_PLATFORM: forgejo
+          RENOVATE_ENDPOINT: ${{ github.server_url }}/api/v1
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_AUTODISCOVER: "false"
+          # Optional read-only github.com PAT; harmless (treated as unset) if absent.
+          GITHUB_COM_TOKEN: ${{ secrets.GITHUB_COM_TOKEN }}
+          LOG_LEVEL: info
+        run: renovate
