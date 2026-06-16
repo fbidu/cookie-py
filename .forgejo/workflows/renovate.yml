@@ -8,13 +8,18 @@
 #
 # It runs on a schedule (and on demand) and reads the repo's renovate.json.
 #
-# Requires a RENOVATE_TOKEN secret: a Forgejo access token (Settings >
+# Requires a RENOVATE_TOKEN secret: a FORGEJO access token (Settings >
 # Applications) with scopes read:user, write:repository, write:issue,
-# read:organization. A repository-only token fails Renovate's init with
-# "Authentication failure". Set it at the repo, org, or user level
-# (Settings > Actions > Secrets). Optionally add a read-only github.com PAT as
-# GITHUB_COM_TOKEN so changelog/version lookups for github-hosted deps
-# (astral-sh/*, actions/*) don't hit the unauthenticated rate limit.
+# read:organization. A repo-only token — or a github.com PAT by mistake — fails
+# Renovate's init with "Authentication failure". Set it at the repo or owning-org
+# level: a personal user-level secret is NOT injected into org-owned repos
+# (Settings > Actions > Secrets).
+#
+# Optionally add a read-only github.com PAT so changelog/version lookups for
+# github-hosted deps (astral-sh/*, actions/*, docker/*) don't hit GitHub's
+# unauthenticated rate limit. Renovate reads it from the GITHUB_COM_TOKEN env
+# var, but Forgejo forbids secret names starting with GITHUB_, so store the
+# secret as GH_COM_TOKEN and let the mapping below rename it.
 #
 # RENOVATE_ENDPOINT is derived from the running instance, so no URL is hardcoded.
 name: Renovate
@@ -37,7 +42,9 @@ jobs:
           RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_AUTODISCOVER: "false"
-          # Optional read-only github.com PAT; harmless (treated as unset) if absent.
-          GITHUB_COM_TOKEN: ${{ secrets.GITHUB_COM_TOKEN }}
+          # Optional read-only github.com PAT for changelog/version lookups.
+          # Secret is GH_COM_TOKEN (Forgejo bans the GITHUB_ prefix); the env var
+          # Renovate reads is GITHUB_COM_TOKEN. Treated as unset if absent.
+          GITHUB_COM_TOKEN: ${{ secrets.GH_COM_TOKEN }}
           LOG_LEVEL: info
         run: renovate
