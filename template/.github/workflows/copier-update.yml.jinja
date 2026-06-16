@@ -39,7 +39,7 @@ jobs:
           fetch-depth: 0
           # Persist the PAT so the later `git push` can update workflow files.
           token: {% raw %}${{ secrets.COPIER_UPDATE_TOKEN }}{% endraw %}
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@v8.2.0
       - name: Run copier update
         env:
           SKIP_POST_GENERATE: "1"
