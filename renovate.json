@@ -6,8 +6,11 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "GitHub Actions pinned in the template's workflow .jinja files",
-      "fileMatch": ["^template/\\.github/workflows/[^/]+\\.jinja$"],
+      "description": "Actions pinned in the template's .github + .forgejo workflow .jinja files",
+      "fileMatch": [
+        "^template/\\.github/workflows/[^/]+\\.jinja$",
+        "^template/\\.forgejo/workflows/[^/]+\\.jinja$"
+      ],
       "matchStrings": ["uses:\\s+(?<depName>[\\w.-]+/[\\w.-]+)@(?<currentValue>v\\d+(?:\\.\\d+){0,2})"],
       "datasourceTemplate": "github-tags"
     },
@@ -27,8 +30,8 @@
       "semanticCommitScope": "template"
     },
     {
-      "description": "Keep GitHub Actions on floating major tags (e.g. @v6); the tag tracks minor/patch at runtime, so only raise PRs for major bumps",
-      "matchFileNames": [".github/workflows/**", "template/.github/workflows/**"],
+      "description": "Keep Actions on floating major tags (e.g. @v6); the tag tracks minor/patch at runtime, so only raise PRs for major bumps",
+      "matchFileNames": [".github/workflows/**", ".forgejo/workflows/**", "template/.github/workflows/**", "template/.forgejo/workflows/**"],
       "matchDatasources": ["github-tags"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "enabled": false
