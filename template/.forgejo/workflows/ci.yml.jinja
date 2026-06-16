@@ -6,7 +6,8 @@
 # runner image is expected to provide git + node (for JS actions like
 # checkout/cache) + python/pip; uv and the project's dev tools install at
 # runtime — no baked CI image, matching the "no CI registry" convention. Action
-# refs are pinned at @v4 (what the instance's default actions URL mirrors).
+# refs are kept current by Renovate (major-bump PRs only; minor/patch frozen in
+# renovate.json).
 name: CI
 
 on:
