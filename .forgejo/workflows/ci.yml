@@ -25,7 +25,7 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install uv
         # PEP 668: the runner's Python is externally managed.
         run: pip install --no-cache-dir --break-system-packages uv
@@ -43,7 +43,7 @@ jobs:
   prek:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install uv
         run: pip install --no-cache-dir --break-system-packages uv
       - name: Install dependencies
