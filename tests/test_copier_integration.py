@@ -85,6 +85,25 @@ def generated_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return project_dir
 
 
+@pytest.fixture(scope="session")
+def generated_cli_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Generate a project_type=cli project once and reuse across tests."""
+    temp_dir = tmp_path_factory.mktemp("copier-cli-test")
+    project_dir = temp_dir / "my-awesome-project"
+
+    _generate_project(project_dir, {"project_type": "cli"})
+
+    result = subprocess.run(
+        ["uv", "sync", "--dev"],
+        capture_output=True,
+        text=True,
+        cwd=project_dir,
+    )
+    assert result.returncode == 0, f"uv sync failed: {result.stderr}"
+
+    return project_dir
+
+
 class TestCopierGeneration:
     """Test that the Copier template generates valid projects."""
 
@@ -261,6 +280,76 @@ class TestCIProviderGeneration:
         assert not (project_dir / ".github/workflows/ci.yml").exists()
         assert not (project_dir / ".github/workflows/build.yml").exists()
         assert not (project_dir / ".forgejo/workflows/ci.yml").exists()
+
+
+class TestProjectType:
+    """Test conditional CLI scaffolding based on project_type."""
+
+    def test_library_has_no_cli_scaffolding(self, tmp_path: Path) -> None:
+        """project_type=library (default) ships no click dep, cli module, or script."""
+        project_dir = _generate_project(tmp_path / "lib", {"project_type": "library"})
+        assert not (project_dir / "my_awesome_project/cli.py").exists()
+        pyproject = (project_dir / "pyproject.toml").read_text()
+        assert "click" not in pyproject
+        assert "[project.scripts]" not in pyproject
+        assert "dependencies = []" in pyproject
+        # The library __main__ keeps its placeholder, not a CLI entry point.
+        assert "import" not in (project_dir / "my_awesome_project/__main__.py").read_text()
+
+    def test_cli_scaffolds_click(self, tmp_path: Path) -> None:
+        """project_type=cli ships the click dep, a cli module, and a console script."""
+        project_dir = _generate_project(tmp_path / "cli", {"project_type": "cli"})
+        assert (project_dir / "my_awesome_project/cli.py").exists()
+
+        pyproject = (project_dir / "pyproject.toml").read_text()
+        assert "click>=8.1.0" in pyproject
+        assert "[project.scripts]" in pyproject
+        assert 'my-awesome-project = "my_awesome_project.cli:main"' in pyproject
+
+        # `python -m pkg` should delegate to the click command.
+        main_mod = (project_dir / "my_awesome_project/__main__.py").read_text()
+        assert "from my_awesome_project.cli import main" in main_mod
+
+    def test_cli_linting_passes(self, generated_cli_project: Path) -> None:
+        """A freshly generated CLI project must lint clean."""
+        result = subprocess.run(
+            ["uv", "run", "ruff", "check", "."],
+            capture_output=True,
+            text=True,
+            cwd=generated_cli_project,
+        )
+        assert result.returncode == 0, f"Ruff check failed: {result.stdout}\n{result.stderr}"
+
+    def test_cli_type_checking_passes(self, generated_cli_project: Path) -> None:
+        """A freshly generated CLI project must pass pyright (strict)."""
+        result = subprocess.run(
+            ["uv", "run", "pyright"],
+            capture_output=True,
+            text=True,
+            cwd=generated_cli_project,
+        )
+        assert result.returncode == 0, f"Pyright failed: {result.stdout}\n{result.stderr}"
+
+    def test_cli_tests_pass(self, generated_cli_project: Path) -> None:
+        """The generated CLI's own test suite (CliRunner) must pass."""
+        result = subprocess.run(
+            ["uv", "run", "pytest", "-v"],
+            capture_output=True,
+            text=True,
+            cwd=generated_cli_project,
+        )
+        assert result.returncode == 0, f"Tests failed: {result.stdout}\n{result.stderr}"
+
+    def test_cli_is_invokable(self, generated_cli_project: Path) -> None:
+        """The installed console script runs end to end."""
+        result = subprocess.run(
+            ["uv", "run", "my-awesome-project", "--name", "World"],
+            capture_output=True,
+            text=True,
+            cwd=generated_cli_project,
+        )
+        assert result.returncode == 0, f"CLI run failed: {result.stdout}\n{result.stderr}"
+        assert "Hello, World!" in result.stdout
 
 
 class TestDependencyUpdates:

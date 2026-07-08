@@ -5,7 +5,16 @@ description = "{{ description }}"
 authors = [{ name = "{{ author }}" }]
 license = { text = "{{ license }}" }
 requires-python = ">={{ python_version }}"
+{%- if project_type == "cli" %}
+dependencies = [
+    "click>=8.1.0",
+]
+
+[project.scripts]
+{{ directory_name }} = "{{ pkg_name }}.cli:main"
+{%- else %}
 dependencies = []
+{%- endif %}
 
 [build-system]
 requires = ["hatchling"]
