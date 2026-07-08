@@ -1,0 +1,15 @@
+{%- if project_type == "cli" -%}
+from click.testing import CliRunner
+
+from {{ pkg_name }}.cli import main
+
+
+def test_cli_greets():
+    runner = CliRunner()
+    result = runner.invoke(main, ["--name", "World"])
+    assert result.exit_code == 0
+    assert "Hello, World!" in result.output
+{%- else -%}
+def test_dummy():
+    assert True
+{%- endif %}

@@ -19,6 +19,9 @@ The requirements are
 1. Clone this repo
 2. Run `uv sync --dev` (or `pip install -e .` if using pip)
 3. 🎆
+{% if project_type == "cli" %}
+This project ships a CLI. After syncing, run it with `uv run {{ directory_name }} --help`.
+{% endif %}
 
 ## Development
 
@@ -92,6 +95,9 @@ Os requerimentos são
 1. Clone esse repositório
 2. Execute `uv sync --dev` (ou `pip install -e .` se usando pip)
 3. 🎆
+{% if project_type == "cli" %}
+Este projeto inclui uma CLI. Após sincronizar, execute-a com `uv run {{ directory_name }} --help`.
+{% endif %}
 
 ## Desenvolvimento
 

@@ -1,6 +1,15 @@
+{%- if project_type == "cli" -%}
+"""Entry point for `python -m {{ pkg_name }}`."""
+
+from {{ pkg_name }}.cli import main
+
+if __name__ == "__main__":
+    main()
+{%- else -%}
 """
 Here be awesome code!
 """
 
 if __name__ == "__main__":
     print("Hello, {{ author }}")
+{%- endif %}
