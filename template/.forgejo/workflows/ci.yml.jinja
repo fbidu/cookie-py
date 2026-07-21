@@ -35,7 +35,7 @@ jobs:
         run: uv sync --dev --all-extras
 
       - name: Cache prek hook environments
-        uses: actions/cache@v5.0.5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/prek
           key: prek-{% raw %}${{ hashFiles('.pre-commit-config.yaml') }}{% endraw %}
