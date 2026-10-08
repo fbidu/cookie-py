@@ -230,6 +230,86 @@ class TestCopierGeneration:
         assert result.returncode == 0, f"uv sync failed: {result.stderr}"
 
 
+def _require_docker() -> None:
+    """Skip the calling test when there is no usable Docker daemon."""
+    if not which("docker") or subprocess.run(["docker", "info"], capture_output=True).returncode:
+        pytest.skip("docker not available")
+
+
+class TestDockerImage:
+    """Test that the generated Dockerfile installs the project into its images."""
+
+    def test_production_image_has_the_package_installed(self, generated_project: Path) -> None:
+        """The package must be importable from anywhere in the production image.
+
+        Installing the project before its source is in the build context leaves
+        an empty install. `python -m <pkg>` run from /app hides that, but console
+        scripts break, so the import runs from another directory.
+        """
+        _require_docker()
+        build = subprocess.run(
+            ["docker", "build", "--target", "production", "-t", "cookie-py-test-production", "."],
+            capture_output=True,
+            text=True,
+            cwd=generated_project,
+        )
+        assert build.returncode == 0, f"docker build failed: {build.stderr}"
+
+        result = subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "-w",
+                "/",
+                "cookie-py-test-production",
+                "python",
+                "-c",
+                "import my_awesome_project",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, f"Package not installed in the image: {result.stderr}"
+
+    def test_development_image_uses_the_mounted_source(self, generated_project: Path) -> None:
+        """The development image must import the source that is mounted at runtime.
+
+        That image ships no source: it is meant to run with the project
+        bind-mounted, so its environment has to point at the mount.
+        """
+        _require_docker()
+        build = subprocess.run(
+            ["docker", "build", "--target", "development", "-t", "cookie-py-test-development", "."],
+            capture_output=True,
+            text=True,
+            cwd=generated_project,
+        )
+        assert build.returncode == 0, f"docker build failed: {build.stderr}"
+        source = generated_project / "my_awesome_project"
+
+        result = subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "-w",
+                "/",
+                "-v",
+                f"{source}:/app/my_awesome_project:ro",
+                "cookie-py-test-development",
+                "python",
+                "-c",
+                "import my_awesome_project",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, f"Mounted source not importable: {result.stderr}"
+
+
 @pytest.mark.parametrize("python_version", ["3.13", "3.14"])
 class TestPythonVersions:
     """Test that generated projects work with each supported Python version.
