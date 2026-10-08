@@ -24,7 +24,12 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies in a virtual environment
+# Install dependencies in a virtual environment, without the project itself:
+# its source is not here yet, and this layer stays cached until they change
+RUN uv sync --frozen --no-dev --no-install-project
+
+# Install the project now that its source is available
+COPY {{ pkg_name }} ./{{ pkg_name }}
 RUN uv sync --frozen --no-dev
 
 # `development` stage - includes dev dependencies and tools
@@ -43,8 +48,10 @@ COPY --from=builder /app/.venv /app/.venv
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install dev dependencies
-RUN uv sync --frozen
+# Install dev dependencies. The project is already installed in the builder's
+# environment and its source is bind-mounted at runtime, so it is not installed
+# again; `--inexact` stops the sync from removing it
+RUN uv sync --frozen --no-install-project --inexact
 
 # Make sure we use the virtual environment
 ENV PATH="/app/.venv/bin:$PATH"
