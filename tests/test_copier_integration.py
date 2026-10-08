@@ -205,6 +205,30 @@ class TestCopierGeneration:
         wheel_files = list((generated_project / "dist").glob("*.whl"))
         assert len(wheel_files) > 0, "No wheel file created"
 
+    def test_installs_when_pkg_name_differs_from_directory_name(self, tmp_path: Path) -> None:
+        """A package name unrelated to the project name must still install.
+
+        Hatchling's default file selection looks for a directory named after the
+        project, so a distribution like `simplelogin-sdk` shipping a `simplelogin`
+        package only builds when the wheel packages are declared explicitly.
+        """
+        project_dir = _generate_project(
+            tmp_path / "simplelogin-sdk",
+            {"directory_name": "simplelogin-sdk", "pkg_name": "simplelogin"},
+        )
+        # Sanity check: the package dir does not match the normalized project name
+        assert (project_dir / "simplelogin").is_dir()
+        assert not (project_dir / "simplelogin_sdk").exists()
+
+        result = subprocess.run(
+            ["uv", "sync", "--dev"],
+            capture_output=True,
+            text=True,
+            cwd=project_dir,
+        )
+
+        assert result.returncode == 0, f"uv sync failed: {result.stderr}"
+
 
 @pytest.mark.parametrize("python_version", ["3.12", "3.13", "3.14"])
 class TestPythonVersions:
