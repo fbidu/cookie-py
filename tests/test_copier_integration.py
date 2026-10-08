@@ -16,7 +16,7 @@ DEFAULT_DATA: dict[str, str | bool] = {
     "author": "Test Author <test@example.com>",
     "version": "0.1.0",
     "license": "MIT",
-    "python_version": "3.12",
+    "python_version": "3.14",
     "language": "EN",
     "enable_github_copilot": True,
     "ci_provider": "github",
@@ -144,13 +144,13 @@ class TestCopierGeneration:
 
         # .python-version pins the exact chosen interpreter so uv sync doesn't
         # drift up to a newer minor that merely satisfies requires-python's floor.
-        assert (generated_project / ".python-version").read_text().strip() == "3.12"
+        assert (generated_project / ".python-version").read_text().strip() == "3.14"
 
     def test_workflow_files_rendered_correctly(self, generated_project: Path) -> None:
         """Test that workflow files have rendered Copier vars and preserved GH Actions syntax."""
         ci_yml = (generated_project / ".github/workflows/ci.yml").read_text()
         # Copier variables should be rendered
-        assert "uv python install 3.12" in ci_yml
+        assert "uv python install 3.14" in ci_yml
         assert "cookiecutter" not in ci_yml
         # GitHub Actions expressions ({% raw %}…{% endraw %}) should be preserved verbatim
         assert "${{ runner.os }}" in ci_yml
@@ -206,7 +206,7 @@ class TestCopierGeneration:
         assert len(wheel_files) > 0, "No wheel file created"
 
 
-@pytest.mark.parametrize("python_version", ["3.12", "3.13", "3.14"])
+@pytest.mark.parametrize("python_version", ["3.13", "3.14"])
 class TestPythonVersions:
     """Test that generated projects work with each supported Python version.
 
@@ -247,6 +247,33 @@ class TestPythonVersions:
         )
 
 
+@pytest.mark.parametrize("python_version", ["3.11", "3.12"])
+def test_dropped_python_versions_are_rejected(tmp_path: Path, python_version: str) -> None:
+    """The template no longer supports 3.11 and 3.12, so it must refuse them.
+
+    Accepting a dropped version would generate a project the template does
+    not test against.
+    """
+    cmd = [
+        "copier",
+        "copy",
+        "--vcs-ref",
+        "HEAD",
+        "--defaults",
+        "--trust",
+        *_build_data_args({**DEFAULT_DATA, "python_version": python_version}),
+        TEMPLATE_DIR,
+        str(tmp_path / "dropped-python"),
+    ]
+
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, env={**os.environ, "SKIP_POST_GENERATE": "1"}
+    )
+
+    assert result.returncode != 0, f"Copier accepted Python {python_version}"
+    assert "python_version" in result.stderr
+
+
 class TestCIProviderGeneration:
     """Test conditional CI file generation based on ci_provider."""
 
@@ -269,7 +296,7 @@ class TestCIProviderGeneration:
 
         ci_yml = (project_dir / ".forgejo/workflows/ci.yml").read_text()
         assert "runs-on: ubuntu-latest" in ci_yml
-        assert "uv python install 3.12" in ci_yml
+        assert "uv python install 3.14" in ci_yml
         # Forgejo Actions expressions ({% raw %}…{% endraw %}) should survive verbatim.
         assert "${{ hashFiles(" in ci_yml
         assert "{% raw %}" not in ci_yml, "Unrendered jinja raw block found"
