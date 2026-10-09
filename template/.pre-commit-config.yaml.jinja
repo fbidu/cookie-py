@@ -18,16 +18,7 @@ repos:
         stages: [pre-commit]
       - id: check-json
         stages: [pre-commit]
-{% if project_type != "docs" %}
-  - repo: https://github.com/PyCQA/bandit
-    rev: "1.9.4"
-    hooks:
-      - id: bandit
-        args: ["-c", "pyproject.toml"]
-        additional_dependencies: ["bandit[toml]"]
-        exclude: ^tests/
-{% endif %}
-{%- if ci_provider == "github" %}
+{% if ci_provider == "github" %}
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.12
     hooks:
@@ -37,8 +28,8 @@ repos:
   - repo: local
     hooks:
 {%- if project_type != "docs" %}
-      # ruff runs from the project's environment, not from a pinned hook repo:
-      # the hooks, `uv run ruff` and CI then share the version in uv.lock.
+      # ruff and bandit run from the project's environment, not from pinned
+      # hook repos: the hooks, `uv run` and CI then share the versions in uv.lock.
       - id: ruff
         name: ruff
         entry: uv run ruff check --fix --force-exclude
@@ -54,6 +45,14 @@ repos:
         types_or: [python, pyi]
         require_serial: true
         stages: [pre-commit]
+
+      - id: bandit
+        name: bandit
+        entry: uv run bandit -c pyproject.toml
+        language: system
+        types: [python]
+        exclude: ^tests/
+        require_serial: true
 
       - id: pyright
         name: pyright

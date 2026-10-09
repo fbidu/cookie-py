@@ -259,6 +259,17 @@ class TestCopierGeneration:
         assert "entry: uv run ruff check --fix --force-exclude" in hooks
         assert "entry: uv run ruff format --force-exclude" in hooks
 
+    def test_bandit_hook_runs_the_projects_bandit(self, generated_project: Path) -> None:
+        """The hook must scan with the bandit that `uv run bandit` uses.
+
+        A hook with its own pinned bandit can know different checks from the
+        locked one, so the same code passes in one place and fails in the other.
+        """
+        hooks = (generated_project / ".pre-commit-config.yaml").read_text()
+
+        assert "PyCQA/bandit" not in hooks
+        assert "entry: uv run bandit -c pyproject.toml" in hooks
+
     def test_type_checking_passes(self, generated_project: Path) -> None:
         """Test that pyright passes on the generated project."""
         result = subprocess.run(
