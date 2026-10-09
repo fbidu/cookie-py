@@ -19,15 +19,6 @@ repos:
       - id: check-json
         stages: [pre-commit]
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.14
-    hooks:
-      - id: ruff
-        args: [--fix]
-        stages: [pre-commit]
-      - id: ruff-format
-        stages: [pre-commit]
-
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.12
     hooks:
@@ -36,6 +27,24 @@ repos:
 
   - repo: local
     hooks:
+      # ruff runs from the project's environment, not from a pinned hook repo:
+      # the hooks, `uv run ruff` and CI then share the version in uv.lock.
+      - id: ruff
+        name: ruff
+        entry: uv run ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+        stages: [pre-commit]
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+        stages: [pre-commit]
+
       - id: pyright
         name: pyright
         entry: uv run pyright
