@@ -14,39 +14,56 @@
 The requirements are
 
 - Python >= {{ python_version }}
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- [uv](https://docs.astral.sh/uv/){% if project_type != "docs" %} (recommended) or pip{% endif %}
 
 1. Clone this repo
-2. Run `uv sync --dev` (or `pip install -e .` if using pip)
-3. 🎆
+2. Run `uv sync --dev`{% if project_type != "docs" %} (or `pip install -e .` if using pip){% endif %}
+3. {% if project_type == "docs" %}Run `uv run mkdocs serve` and open <http://127.0.0.1:8000>{% else %}🎆{% endif %}
 {% if project_type == "cli" %}
 This project ships a CLI. After syncing, run it with `uv run {{ directory_name }} --help`.
 {% endif %}
 
 ## Development
 
-This project uses modern Python tooling:
+{% if project_type == "docs" %}This project is a documentation site. It uses:{% else %}This project uses modern Python tooling:{% endif %}
 
 - **[uv](https://docs.astral.sh/uv/)** for fast dependency management and virtual environments
+{%- if project_type != "docs" %}
 - **[ruff](https://docs.astral.sh/ruff/)** for linting and code formatting
 - **[pyright](https://github.com/microsoft/pyright)** for type checking
 - **[pytest](https://docs.pytest.org/)** for testing
+{%- endif %}
 - **[prek](https://github.com/j178/prek)** for git hooks (drop-in `pre-commit` replacement)
+- **[MkDocs](https://www.mkdocs.org/)** with [Material](https://squidfunk.github.io/mkdocs-material/) for the documentation site
 
 ### Setup
 
 1. Install [uv](https://docs.astral.sh/uv/) and [prek](https://github.com/j178/prek) globally
 2. Clone this repository
 3. Run `uv sync --dev` to install dependencies
-4. Run `prek install --install-hooks` to set up both pre-commit and pre-push hooks
+4. Run `prek install --install-hooks` to set up {% if project_type == "docs" %}the pre-commit hook{% else %}both pre-commit and pre-push hooks{% endif %}
 
 ### Commands
 
+{% if project_type != "docs" -%}
 - `uv run pytest` - Run tests
 - `uv run ruff check .` - Run linting
 - `uv run ruff format .` - Format code
 - `pyright` - Run type checking
+{% endif -%}
 - `prek run --all-files` - Run all hooks
+
+### Documentation
+
+The docs are an MkDocs site: pages in `docs/`, config in `mkdocs.yml`.{% if project_type != "docs" %} The API reference is generated from the docstrings.{% endif %}
+
+- `uv run mkdocs serve` - Preview the site at <http://127.0.0.1:8000>
+- `uv run mkdocs build --strict` - Build into `site/`, failing on broken links (the pre-commit hook runs this)
+{% if ci_provider == "forgejo" and publish_docs %}
+Every push to `main` that touches the docs publishes the site to <https://docs.lx.e6a.app/{{ docs_tenant }}/> (homelab LAN only), through `.forgejo/workflows/docs.yml`.
+
+The workflow needs a `DOCS_PUBLISH_KEY_B64` Actions secret on the repo's **owner** (account or org), not on the repo. An owner that already publishes docs has one. For a new org, follow [Publishing docs](https://docs.lx.e6a.app/ansible/publishing-docs/).
+{% endif %}
 {% if dependency_updates == "renovate" %}
 ### Dependency updates
 
@@ -60,7 +77,7 @@ Activate it with **one** of these (using both causes duplicate PRs):
 To activate it:
 
 1. Create a `RENOVATE_TOKEN` — a Forgejo access token (Settings → Applications) with scopes `read:user`, `write:repository`, `write:issue`, and `read:organization` (a repository-only token fails, because Renovate's init reads your user, issues, and org labels). Save it as a repository, organization, or user-level **Actions secret** — org/user-level covers every repo in that scope.
-2. *(Optional)* add a read-only github.com PAT as a `GITHUB_COM_TOKEN` secret so Renovate can fetch changelogs/versions for github-hosted dependencies (e.g. `actions/*`) without hitting github.com rate limits.
+2. *(Optional)* add a read-only github.com PAT as a `GH_COM_TOKEN` secret so Renovate can fetch changelogs/versions for github-hosted dependencies (e.g. `actions/*`) without hitting github.com rate limits.
 3. The bundled `.forgejo/workflows/renovate.yml` runs weekly (and on demand via *Run workflow*). Adjust its schedule if you like.
 {% else %}
 Point a Renovate runner — the [hosted app](https://github.com/apps/renovate) or a scheduled CI job — at this repo and it will pick up `renovate.json`.
@@ -90,39 +107,56 @@ A scheduled job also checks weekly and opens a PR when the template has newer ch
 Os requerimentos são
 
 - Python >= {{ python_version }}
-- [uv](https://docs.astral.sh/uv/) (recomendado) ou pip
+- [uv](https://docs.astral.sh/uv/){% if project_type != "docs" %} (recomendado) ou pip{% endif %}
 
 1. Clone esse repositório
-2. Execute `uv sync --dev` (ou `pip install -e .` se usando pip)
-3. 🎆
+2. Execute `uv sync --dev`{% if project_type != "docs" %} (ou `pip install -e .` se usando pip){% endif %}
+3. {% if project_type == "docs" %}Execute `uv run mkdocs serve` e abra <http://127.0.0.1:8000>{% else %}🎆{% endif %}
 {% if project_type == "cli" %}
 Este projeto inclui uma CLI. Após sincronizar, execute-a com `uv run {{ directory_name }} --help`.
 {% endif %}
 
 ## Desenvolvimento
 
-Este projeto usa ferramentas modernas do Python:
+{% if project_type == "docs" %}Este projeto é um site de documentação. Ele usa:{% else %}Este projeto usa ferramentas modernas do Python:{% endif %}
 
 - **[uv](https://docs.astral.sh/uv/)** para gerenciamento rápido de dependências e ambientes virtuais
+{%- if project_type != "docs" %}
 - **[ruff](https://docs.astral.sh/ruff/)** para linting e formatação de código
 - **[pyright](https://github.com/microsoft/pyright)** para verificação de tipos
 - **[pytest](https://docs.pytest.org/)** para testes
+{%- endif %}
 - **[prek](https://github.com/j178/prek)** para git hooks (substituto drop-in do `pre-commit`)
+- **[MkDocs](https://www.mkdocs.org/)** com [Material](https://squidfunk.github.io/mkdocs-material/) para o site de documentação
 
 ### Configuração
 
 1. Instale [uv](https://docs.astral.sh/uv/) e [prek](https://github.com/j178/prek) globalmente
 2. Clone este repositório
 3. Execute `uv sync --dev` para instalar dependências
-4. Execute `prek install --install-hooks` para configurar os hooks de pre-commit e pre-push
+4. Execute `prek install --install-hooks` para configurar {% if project_type == "docs" %}o hook de pre-commit{% else %}os hooks de pre-commit e pre-push{% endif %}
 
 ### Comandos
 
+{% if project_type != "docs" -%}
 - `uv run pytest` - Executar testes
 - `uv run ruff check .` - Executar linting
 - `uv run ruff format .` - Formatar código
 - `pyright` - Executar verificação de tipos
+{% endif -%}
 - `prek run --all-files` - Executar todos os hooks
+
+### Documentação
+
+A documentação é um site MkDocs: páginas em `docs/`, configuração em `mkdocs.yml`.{% if project_type != "docs" %} A referência da API é gerada a partir das docstrings.{% endif %}
+
+- `uv run mkdocs serve` - Pré-visualizar o site em <http://127.0.0.1:8000>
+- `uv run mkdocs build --strict` - Gerar o site em `site/`, falhando em links quebrados (o hook de pre-commit executa isso)
+{% if ci_provider == "forgejo" and publish_docs %}
+Todo push para a `main` que altera a documentação publica o site em <https://docs.lx.e6a.app/{{ docs_tenant }}/> (apenas na LAN do homelab), pelo `.forgejo/workflows/docs.yml`.
+
+O workflow precisa de um Actions secret `DOCS_PUBLISH_KEY_B64` no **dono** do repositório (conta ou organização), não no repositório. Um dono que já publica documentação já tem um. Para uma organização nova, siga [Publishing docs](https://docs.lx.e6a.app/ansible/publishing-docs/).
+{% endif %}
 {% if dependency_updates == "renovate" %}
 ### Atualização de dependências
 
@@ -136,7 +170,7 @@ Ative com **uma** destas opções (usar as duas gera PRs duplicados):
 Para ativar:
 
 1. Crie um `RENOVATE_TOKEN` — um token de acesso do Forgejo (Settings → Applications) com os escopos `read:user`, `write:repository`, `write:issue` e `read:organization` (um token só de repositório falha, porque a inicialização do Renovate lê seu usuário, issues e labels da organização). Salve-o como um **Actions secret** de repositório, organização ou usuário — o nível de organização/usuário cobre todos os repos daquele escopo.
-2. *(Opcional)* adicione um PAT somente-leitura do github.com como secret `GITHUB_COM_TOKEN` para que o Renovate busque changelogs/versões de dependências hospedadas no github (ex.: `actions/*`) sem esbarrar nos limites de taxa do github.com.
+2. *(Opcional)* adicione um PAT somente-leitura do github.com como secret `GH_COM_TOKEN` para que o Renovate busque changelogs/versões de dependências hospedadas no github (ex.: `actions/*`) sem esbarrar nos limites de taxa do github.com.
 3. O `.forgejo/workflows/renovate.yml` incluído roda semanalmente (e sob demanda via *Run workflow*). Ajuste o agendamento se quiser.
 {% else %}
 Aponte um runner do Renovate — o [app hospedado](https://github.com/apps/renovate) ou um job de CI agendado — para este repositório e ele usará o `renovate.json`.

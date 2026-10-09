@@ -1,0 +1,40 @@
+site_name: {{ project_name | to_json(ensure_ascii=False) }}
+site_description: {{ description | to_json(ensure_ascii=False) }}
+{%- if ci_provider == "forgejo" and publish_docs %}
+# MkDocs uses this for the 404 page, the sitemap and canonical links.
+site_url: https://docs.lx.e6a.app/{{ docs_tenant }}/
+{%- endif %}
+# Pages live in docs/ and the build goes to site/ (gitignored): the MkDocs defaults.
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/weather-night, name: Switch to dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/weather-sunny, name: Switch to light mode }
+  features:
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+# No `nav:` on purpose. Pages are picked up from docs/ (index first, then
+# alphabetical), so adding a page never needs an edit here.
+
+plugins:
+  - search
+{%- if project_type != "docs" %}
+  # Renders docs/reference.md from the package's docstrings.
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_submodules: true
+{%- endif %}
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: { permalink: true }

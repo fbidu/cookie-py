@@ -2,6 +2,8 @@
 
 import os
 import subprocess
+import tomllib
+from collections.abc import Iterator
 from pathlib import Path
 from shutil import which
 
@@ -22,6 +24,22 @@ DEFAULT_DATA: dict[str, str | bool] = {
     "ci_provider": "github",
     "dependency_updates": "renovate",
 }
+# Variables git exports to its hooks to locate the repo being committed or pushed.
+GIT_REPO_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_PREFIX")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ignore_inherited_git_repo() -> Iterator[None]:
+    """Stop git from acting on this repo when the suite runs from a git hook.
+
+    The pre-push hook runs the suite with git's repo variables pointing here.
+    Copier and the tests run git in other directories: with those variables
+    set, cloning the template fails and `git add` would stage into this repo.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        for name in GIT_REPO_ENV:
+            patch.delenv(name, raising=False)
+        yield
 
 
 def _build_data_args(data: dict[str, str | bool]) -> list[str]:
@@ -35,11 +53,11 @@ def _build_data_args(data: dict[str, str | bool]) -> list[str]:
     return args
 
 
-def _generate_project(
+def _run_copier(
     dest: Path,
     data: dict[str, str | bool] | None = None,
-) -> Path:
-    """Generate a project from the template (post-gen tasks skipped via env var)."""
+) -> subprocess.CompletedProcess[str]:
+    """Run copier on the template (post-gen tasks skipped via env var)."""
     effective_data = {**DEFAULT_DATA, **(data or {})}
     data_args = _build_data_args(effective_data)
 
@@ -60,7 +78,15 @@ def _generate_project(
     ]
     env = {**os.environ, "SKIP_POST_GENERATE": "1"}
 
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    return subprocess.run(cmd, capture_output=True, text=True, env=env)
+
+
+def _generate_project(
+    dest: Path,
+    data: dict[str, str | bool] | None = None,
+) -> Path:
+    """Generate a project from the template, failing the test if copier fails."""
+    result = _run_copier(dest, data)
     assert result.returncode == 0, f"Copier failed: {result.stderr}\n{result.stdout}"
     return dest
 
@@ -104,6 +130,25 @@ def generated_cli_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return project_dir
 
 
+@pytest.fixture(scope="session")
+def generated_docs_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Generate a project_type=docs project once and reuse across tests."""
+    temp_dir = tmp_path_factory.mktemp("copier-docs-test")
+    project_dir = temp_dir / "my-awesome-project"
+
+    _generate_project(project_dir, {"project_type": "docs"})
+
+    result = subprocess.run(
+        ["uv", "sync", "--dev"],
+        capture_output=True,
+        text=True,
+        cwd=project_dir,
+    )
+    assert result.returncode == 0, f"uv sync failed: {result.stderr}"
+
+    return project_dir
+
+
 class TestCopierGeneration:
     """Test that the Copier template generates valid projects."""
 
@@ -116,6 +161,7 @@ class TestCopierGeneration:
             ".python-version",
             ".pre-commit-config.yaml",
             "Dockerfile",
+            "AGENTS.md",
             "CLAUDE.md",
             "conftest.py",
             "my_awesome_project/__init__.py",
@@ -145,6 +191,35 @@ class TestCopierGeneration:
         # .python-version pins the exact chosen interpreter so uv sync doesn't
         # drift up to a newer minor that merely satisfies requires-python's floor.
         assert (generated_project / ".python-version").read_text().strip() == "3.14"
+
+    def test_claude_md_imports_agents_md(self, generated_project: Path) -> None:
+        """Agent instructions live in AGENTS.md, so every agent tool reads one file.
+
+        CLAUDE.md only imports it, for the tools that look for that name.
+        """
+        assert (generated_project / "CLAUDE.md").read_text().strip() == "@AGENTS.md"
+
+    def test_free_text_answers_survive_in_generated_files(self, tmp_path: Path) -> None:
+        """The description and the author are free text, so they may hold quotes.
+
+        Written unescaped into a quoted string, a double quote makes
+        pyproject.toml invalid and the project cannot be installed.
+        """
+        description = 'Say "hi" to João\'s API'
+        author = 'Felipe "Bidu" Rodrigues <felipe@example.com>'
+
+        project_dir = _generate_project(
+            tmp_path / "quotes", {"description": description, "author": author}
+        )
+
+        project = tomllib.loads((project_dir / "pyproject.toml").read_text())["project"]
+        assert project["description"] == description
+        assert project["authors"] == [{"name": author}]
+        main_module = (project_dir / "my_awesome_project/__main__.py").read_text()
+        compile(main_module, "__main__.py", "exec")
+        # Escaped only where the format needs it, so the files stay readable
+        mkdocs_yml = (project_dir / "mkdocs.yml").read_text()
+        assert 'site_description: "Say \\"hi\\" to João\'s API"' in mkdocs_yml
 
     def test_workflow_files_rendered_correctly(self, generated_project: Path) -> None:
         """Test that workflow files have rendered Copier vars and preserved GH Actions syntax."""
@@ -228,6 +303,162 @@ class TestCopierGeneration:
         )
 
         assert result.returncode == 0, f"uv sync failed: {result.stderr}"
+
+
+class TestDocs:
+    """Test that every generated project ships an MkDocs site that builds."""
+
+    def test_docs_site_builds(self, generated_project: Path) -> None:
+        """A fresh project must build its docs with no warnings.
+
+        The strict build is the gate the pre-commit hook and CI apply, so a
+        template that fails it would break the first commit of every project.
+        """
+        result = subprocess.run(
+            ["uv", "run", "mkdocs", "build", "--strict"],
+            capture_output=True,
+            text=True,
+            cwd=generated_project,
+        )
+
+        assert result.returncode == 0, f"mkdocs build failed: {result.stdout}\n{result.stderr}"
+        assert "My Awesome Project" in (generated_project / "site/index.html").read_text()
+
+    def test_api_reference_documents_the_package(self, generated_cli_project: Path) -> None:
+        """The reference page is rendered from the code, so it needs no upkeep.
+
+        Submodules must show up too, or the page stays empty while the package
+        grows.
+        """
+        result = subprocess.run(
+            ["uv", "run", "mkdocs", "build", "--strict"],
+            capture_output=True,
+            text=True,
+            cwd=generated_cli_project,
+        )
+
+        assert result.returncode == 0, f"mkdocs build failed: {result.stdout}\n{result.stderr}"
+        reference = (generated_cli_project / "site/reference/index.html").read_text()
+        assert "my_awesome_project.cli" in reference
+
+    def test_docs_hook_rejects_a_broken_link(self, tmp_path: Path) -> None:
+        """A broken link must fail the commit, not a publish job nobody watches."""
+        if not which("prek"):
+            pytest.skip("prek not installed")
+        project_dir = _generate_project(tmp_path / "docs-hook")
+        subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
+        # prek needs a git repo to find files via --all-files
+        subprocess.run(["git", "init", "-q"], cwd=project_dir, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+        hook = ["prek", "run", "mkdocs-build", "--all-files"]
+        # Sanity check: the hook passes on the untouched project
+        clean = subprocess.run(hook, capture_output=True, text=True, cwd=project_dir)
+        assert clean.returncode == 0, f"Hook failed on a fresh project: {clean.stdout}"
+        with (project_dir / "docs/index.md").open("a") as index:
+            index.write("\n[Missing page](missing.md)\n")
+
+        result = subprocess.run(hook, capture_output=True, text=True, cwd=project_dir)
+
+        assert result.returncode != 0, "Hook accepted a link to a page that does not exist"
+        assert "missing.md" in result.stdout
+
+    def test_existing_instructions_and_pages_are_kept(self, tmp_path: Path) -> None:
+        """Adopting the docs flow must not overwrite what a project already wrote.
+
+        Projects generated before it filled CLAUDE.md by hand, and some have
+        their own docs/index.md. Both are project content, not template files.
+        """
+        project_dir = tmp_path / "existing"
+        (project_dir / "docs").mkdir(parents=True)
+        (project_dir / "CLAUDE.md").write_text("Project instructions\n")
+        (project_dir / "docs/index.md").write_text("# Findings\n")
+
+        _generate_project(project_dir)
+
+        assert (project_dir / "CLAUDE.md").read_text() == "Project instructions\n"
+        assert (project_dir / "docs/index.md").read_text() == "# Findings\n"
+        # Sanity check: the rest of the docs flow still arrived
+        assert (project_dir / "mkdocs.yml").exists()
+        assert (project_dir / "AGENTS.md").exists()
+
+
+class TestDocsPublishing:
+    """Test the opt-in publishing of the docs to the homelab docs host."""
+
+    def test_publishing_is_off_by_default(self, tmp_path: Path) -> None:
+        """A Forgejo project must not publish unless asked to.
+
+        Publishing pushes the docs to a shared host, so it is never a default.
+        """
+        project_dir = _generate_project(tmp_path / "no-publish", {"ci_provider": "forgejo"})
+
+        assert not (project_dir / ".forgejo/workflows/docs.yml").exists()
+        assert "site_url" not in (project_dir / "mkdocs.yml").read_text()
+
+    def test_opting_in_generates_the_publish_workflow(self, tmp_path: Path) -> None:
+        """Opting in must yield a workflow that publishes the chosen tenant.
+
+        MkDocs also needs the tenant URL as site_url, or the 404 page, the
+        sitemap and canonical links point at the host root.
+        """
+        project_dir = _generate_project(
+            tmp_path / "publish",
+            {"ci_provider": "forgejo", "publish_docs": True, "docs_tenant": "my-tenant"},
+        )
+
+        workflow = (project_dir / ".forgejo/workflows/docs.yml").read_text()
+        assert "runs-on: homelab" in workflow
+        assert "mkdocs build --strict" in workflow
+        assert "docspub@192.168.71.1 publish my-tenant" in workflow
+        # Forgejo Actions expressions ({% raw %}…{% endraw %}) should survive verbatim.
+        assert "${{ secrets.DOCS_PUBLISH_KEY_B64 }}" in workflow
+        assert "{% raw %}" not in workflow, "Unrendered jinja raw block found"
+        mkdocs_yml = (project_dir / "mkdocs.yml").read_text()
+        assert "site_url: https://docs.lx.e6a.app/my-tenant/" in mkdocs_yml
+
+    def test_tenant_defaults_to_the_directory_name(self, tmp_path: Path) -> None:
+        """The tenant is the URL path, and the project's own name is the obvious one."""
+        project_dir = _generate_project(
+            tmp_path / "default-tenant", {"ci_provider": "forgejo", "publish_docs": True}
+        )
+
+        workflow = (project_dir / ".forgejo/workflows/docs.yml").read_text()
+        assert "publish my-awesome-project" in workflow
+
+    def test_invalid_tenant_is_rejected(self, tmp_path: Path) -> None:
+        """The docs host refuses a tenant outside [a-z0-9][a-z0-9-]*.
+
+        Rejecting it at generation time beats a publish job that fails later.
+        """
+        result = _run_copier(
+            tmp_path / "bad-tenant",
+            {"ci_provider": "forgejo", "publish_docs": True, "docs_tenant": "Bad_Tenant"},
+        )
+
+        assert result.returncode != 0, "Copier accepted an invalid tenant"
+        assert "tenant" in result.stderr
+
+    def test_tenant_rule_does_not_apply_without_publishing(self, tmp_path: Path) -> None:
+        """A directory name that is not a valid tenant must not block a project that never publishes."""
+        project_dir = _generate_project(
+            tmp_path / "under_score",
+            {"ci_provider": "forgejo", "directory_name": "under_score"},
+        )
+
+        assert (project_dir / "mkdocs.yml").exists()
+
+    def test_other_providers_never_publish(self, tmp_path: Path) -> None:
+        """The docs host is only reachable from the homelab runner.
+
+        A publish workflow on another provider could never succeed, so the
+        answer is ignored there.
+        """
+        project_dir = _generate_project(
+            tmp_path / "github-publish", {"ci_provider": "github", "publish_docs": True}
+        )
+
+        assert not (project_dir / ".forgejo/workflows/docs.yml").exists()
+        assert "site_url" not in (project_dir / "mkdocs.yml").read_text()
 
 
 def _require_docker() -> None:
@@ -358,21 +589,7 @@ def test_dropped_python_versions_are_rejected(tmp_path: Path, python_version: st
     Accepting a dropped version would generate a project the template does
     not test against.
     """
-    cmd = [
-        "copier",
-        "copy",
-        "--vcs-ref",
-        "HEAD",
-        "--defaults",
-        "--trust",
-        *_build_data_args({**DEFAULT_DATA, "python_version": python_version}),
-        TEMPLATE_DIR,
-        str(tmp_path / "dropped-python"),
-    ]
-
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, env={**os.environ, "SKIP_POST_GENERATE": "1"}
-    )
+    result = _run_copier(tmp_path / "dropped-python", {"python_version": python_version})
 
     assert result.returncode != 0, f"Copier accepted Python {python_version}"
     assert "python_version" in result.stderr
@@ -483,6 +700,109 @@ class TestProjectType:
         assert "Hello, World!" in result.stdout
 
 
+class TestDocsOnlyProject:
+    """Test the project_type=docs scaffold: an MkDocs site with no Python package."""
+
+    def test_ships_the_site_and_no_code(self, generated_docs_project: Path) -> None:
+        """A docs-only project is the site plus its tooling, with nothing to import or test."""
+        expected = [
+            "pyproject.toml",
+            "mkdocs.yml",
+            "docs/index.md",
+            "README.md",
+            "AGENTS.md",
+            "CLAUDE.md",
+            ".python-version",
+            ".pre-commit-config.yaml",
+            ".github/workflows/ci.yml",
+        ]
+        for file_path in expected:
+            assert (generated_docs_project / file_path).exists(), f"Missing file: {file_path}"
+
+        unexpected = [
+            "my_awesome_project",
+            "tests",
+            "conftest.py",
+            "Dockerfile",
+            ".dockerignore",
+            "docs/reference.md",
+            ".github/workflows/build.yml",
+        ]
+        for file_path in unexpected:
+            assert not (generated_docs_project / file_path).exists(), f"Unexpected: {file_path}"
+
+    def test_has_no_python_tooling(self, generated_docs_project: Path) -> None:
+        """Linters, type checkers and test runners have nothing to check here.
+
+        Shipping them would add hooks and CI steps that run on no files.
+        """
+        pyproject = (generated_docs_project / "pyproject.toml").read_text()
+        assert "package = false" in pyproject
+        hooks = (generated_docs_project / ".pre-commit-config.yaml").read_text()
+        for tool in ("ruff", "pyright", "pytest", "bandit", "hatchling", "mkdocstrings"):
+            assert tool not in pyproject, f"{tool} found in pyproject.toml"
+            assert tool not in hooks, f"{tool} found in .pre-commit-config.yaml"
+
+    def test_docs_site_builds(self, generated_docs_project: Path) -> None:
+        """The site is the whole product, so a fresh project must build it cleanly."""
+        result = subprocess.run(
+            ["uv", "run", "mkdocs", "build", "--strict"],
+            capture_output=True,
+            text=True,
+            cwd=generated_docs_project,
+        )
+
+        assert result.returncode == 0, f"mkdocs build failed: {result.stdout}\n{result.stderr}"
+        assert "My Awesome Project" in (generated_docs_project / "site/index.html").read_text()
+
+    def test_passes_its_own_hooks(self, tmp_path: Path) -> None:
+        """The hooks left after dropping the Python tooling must still run green.
+
+        The first pass may rewrite files (end-of-file fixer), as the post-generate
+        task allows, so the second pass is the one that must be clean.
+        """
+        if not which("prek"):
+            pytest.skip("prek not installed")
+        project_dir = _generate_project(tmp_path / "docs-hooks", {"project_type": "docs"})
+        subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
+        # prek needs a git repo to find files via --all-files
+        subprocess.run(["git", "init", "-q"], cwd=project_dir, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+        subprocess.run(["prek", "run", "--all-files"], cwd=project_dir, capture_output=True)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+
+        result = subprocess.run(
+            ["prek", "run", "--all-files"], capture_output=True, text=True, cwd=project_dir
+        )
+
+        assert result.returncode == 0, f"Hooks failed:\n{result.stdout}\n{result.stderr}"
+        assert "mkdocs build" in result.stdout
+
+    def test_pages_survive_in_a_directory_named_docs(self, tmp_path: Path) -> None:
+        """A docs repo is often just called `docs`, which is also the pages folder.
+
+        The package folder is skipped for this project type, and skipping it by
+        name would take the pages with it.
+        """
+        project_dir = _generate_project(
+            tmp_path / "docs",
+            {"project_type": "docs", "directory_name": "docs", "pkg_name": "docs"},
+        )
+
+        assert (project_dir / "docs/index.md").exists()
+
+    def test_publish_workflow_watches_no_package(self, tmp_path: Path) -> None:
+        """The publish workflow must not trigger on a package folder that does not exist."""
+        project_dir = _generate_project(
+            tmp_path / "docs-publish",
+            {"project_type": "docs", "ci_provider": "forgejo", "publish_docs": True},
+        )
+
+        workflow = (project_dir / ".forgejo/workflows/docs.yml").read_text()
+        assert "docs/**" in workflow
+        assert "my_awesome_project" not in workflow
+
+
 class TestDependencyUpdates:
     """Test conditional Renovate setup based on dependency_updates and ci_provider."""
 
@@ -513,6 +833,24 @@ class TestDependencyUpdates:
         assert "RENOVATE_PLATFORM: forgejo" in renovate_wf
         assert "runs-on: ubuntu-latest" in renovate_wf
         assert "schedule:" in renovate_wf
+
+    def test_forgejo_readme_names_the_secret_the_workflow_reads(self, tmp_path: Path) -> None:
+        """The README says which secret to create, so it must match the workflow.
+
+        Forgejo refuses secret names that start with GITHUB_, so a README that
+        names one leaves the user unable to follow it.
+        """
+        project_dir = _generate_project(
+            tmp_path / "fj-secret",
+            {"ci_provider": "forgejo", "dependency_updates": "renovate", "language": "Both"},
+        )
+        # Sanity check: this is the secret the workflow reads
+        workflow = (project_dir / ".forgejo/workflows/renovate.yml").read_text()
+        assert "secrets.GH_COM_TOKEN" in workflow
+
+        readme = (project_dir / "README.md").read_text()
+        assert readme.count("`GH_COM_TOKEN`") == 2, "Expected once per README language"
+        assert "GITHUB_COM_TOKEN" not in readme
 
     def test_none_ships_nothing(self, tmp_path: Path) -> None:
         """dependency_updates=none ships no Renovate config or runner."""

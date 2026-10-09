@@ -1,0 +1,62 @@
+# {{ project_name }}
+
+{{ description }}
+{% if project_type == "docs" %}
+- This repository contains no application code. Its deliverable is the pages in `docs/`.
+
+<!-- Describe here what these docs cover, who reads them and how they are organised. -->
+
+## Layout
+
+- `docs/` holds the pages, and `docs/index.md` is the home page.
+- `mkdocs.yml` configures the site and has no `nav:`. The navigation therefore lists a new page or folder in `docs/` automatically, index first and then in alphabetical order.
+- `pyproject.toml` and `uv.lock` pin the build tools.
+- `site/` holds the build output and is never committed.
+
+## Writing pages
+
+- Before adding a page, search `docs/` for a page that covers the topic. Extend that page instead of adding a second one.
+- A page covers one topic. When a page covers a second topic, split it and link the two pages.
+- A page starts with one `# Title`. It states what it answers before it gives the detail.
+- Related pages share a folder that has its own `index.md`.
+- A change that renames or removes a page also fixes every link to that page.
+- A page states only verified facts. A fact that can become outdated links its source and names the version or date it describes.
+
+## Markdown rules
+
+- MkDocs renders Python-Markdown, not GitHub Markdown.
+- A link between pages has the form `other-page.md`, never `./other-page` or a full URL. `uv run mkdocs build --strict` (the strict build) checks only `.md` links.
+- A blank line precedes every list. Without it, the list merges into the preceding paragraph.
+- Sub-lists, and paragraphs inside a list item, are indented by 4 spaces.
+- No line starts with `#` followed by a digit, as an issue number does. Such a line renders as a heading.
+
+## Verification
+
+- The strict build must pass. The pre-commit hook runs it, so a broken link fails the commit.
+- `uv run mkdocs serve` previews the site at <http://127.0.0.1:8000>.
+- Do not bypass the hooks. Fix what they report.
+{%- if ci_provider == "forgejo" and publish_docs %}
+
+## Publishing
+
+- A push to `main` that changes the documentation publishes the site to <https://docs.lx.e6a.app/{{ docs_tenant }}/>. Such a push is outward-facing.
+- Everything in `docs/` is published. It therefore never holds the following (secrets, tokens, personal data, raw captures).
+{%- endif %}
+{% else %}
+<!-- Describe here what this project is, how it is laid out and how to work in it. -->
+
+## Documentation
+
+- The documentation is an MkDocs site. `docs/` holds the pages, and `mkdocs.yml` configures the site.
+- `mkdocs.yml` has no `nav:`, so the navigation lists a new page in `docs/` automatically.
+- `docs/reference.md` renders the API reference from the docstrings in `{{ pkg_name }}`. Keep public docstrings accurate. Do not copy them into pages.
+- A change that alters behaviour, usage or setup also updates the page that covers it. When no page covers it, the change adds one.
+- A link between pages has the form `other-page.md`, never `./other-page` or a full URL. `uv run mkdocs build --strict` (the strict build) checks only `.md` links.
+- MkDocs renders Python-Markdown, not GitHub Markdown. A list therefore needs a preceding blank line and its sub-lists a 4-space indent, or they merge into the preceding paragraph.
+- The strict build must pass. The pre-commit hook runs it, so a broken link fails the commit.
+- `uv run mkdocs serve` previews the site at <http://127.0.0.1:8000>.
+{%- if ci_provider == "forgejo" and publish_docs %}
+- A push to `main` that changes the documentation publishes the site to <https://docs.lx.e6a.app/{{ docs_tenant }}/>. Such a push is outward-facing.
+- Everything in `docs/` is published. It therefore never holds secrets, tokens or raw captures.
+{%- endif %}
+{% endif -%}

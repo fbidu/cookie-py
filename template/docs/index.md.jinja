@@ -1,0 +1,11 @@
+# {{ project_name }}
+
+{{ description }}
+
+{% if project_type == "docs" -%}
+Add pages as Markdown files in `docs/`. They show up in the navigation on their own.
+{%- else -%}
+## Where to go next
+
+- [API reference](reference.md): generated from the docstrings in `{{ pkg_name }}`.
+{%- endif %}

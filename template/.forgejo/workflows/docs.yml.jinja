@@ -1,0 +1,47 @@
+---
+# Build the MkDocs site and publish it as the `{{ docs_tenant }}` tenant of the
+# homelab docs host: https://docs.lx.e6a.app/{{ docs_tenant }}/
+#
+# Publishing is one SSH call as `docspub`. Its key is pinned host-side to a
+# forced command that can only swap in a docs tenant and refresh the landing
+# index. The key comes from the DOCS_PUBLISH_KEY_B64 Actions secret, which is
+# set per owner (account or org), not per repo. How to add one for a new org:
+# https://docs.lx.e6a.app/ansible/publishing-docs/
+#
+# `runs-on: homelab`: the docs host is only reachable from the homelab runner.
+name: docs
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - mkdocs.yml
+{%- if project_type != "docs" %}
+      - {{ pkg_name }}/**  # the API reference renders from the docstrings
+{%- endif %}
+      - .forgejo/workflows/docs.yml
+  workflow_dispatch:
+
+jobs:
+  docs:
+    runs-on: homelab
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build (uv, docs group from uv.lock)
+        run: |
+          # venv, not system pip: the runner image's apt Markdown has no RECORD
+          # file, so pip can't replace it.
+          python3 -m venv /tmp/uv-venv
+          /tmp/uv-venv/bin/pip install --no-cache-dir uv
+          /tmp/uv-venv/bin/uv run --frozen --only-group docs mkdocs build --strict
+
+      - name: Publish to docs.lx.e6a.app/{{ docs_tenant }}/
+        env:
+          DOCS_PUBLISH_KEY_B64: {% raw %}${{ secrets.DOCS_PUBLISH_KEY_B64 }}{% endraw %}
+        run: |
+          umask 077
+          printf '%s' "$DOCS_PUBLISH_KEY_B64" | base64 -d > /tmp/dk
+          tar -czf - -C site . | ssh -i /tmp/dk -p 8110 \
+            -o StrictHostKeyChecking=accept-new docspub@192.168.71.1 publish {{ docs_tenant }}
+          rm -f /tmp/dk

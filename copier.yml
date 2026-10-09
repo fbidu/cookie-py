@@ -32,10 +32,20 @@ directory_name:
   help: "Directory name for the project"
   default: "{{ project_name | lower | replace(' ', '-') }}"
 
+project_type:
+  type: str
+  help: "What kind of project is this?"
+  default: "library"
+  choices:
+    "Library": "library"
+    "CLI application (Click)": "cli"
+    "Documentation only (MkDocs)": "docs"
+
 pkg_name:
   type: str
   help: "Python package name"
   default: "{{ directory_name | replace('-', '_') }}"
+  when: "{{ project_type != 'docs' }}"
 
 description:
   type: str
@@ -71,14 +81,6 @@ python_version:
     - "3.13"
     - "3.14"
 
-project_type:
-  type: str
-  help: "What kind of project is this?"
-  default: "library"
-  choices:
-    "Library": "library"
-    "CLI application (Click)": "cli"
-
 # --- Feature toggles ---
 
 language:
@@ -113,6 +115,22 @@ repo_visibility:
     "Public": "public"
   when: "{{ ci_provider == 'github' }}"
 
+publish_docs:
+  type: bool
+  help: "Publish the docs to docs.lx.e6a.app on every push to main?"
+  default: false
+  when: "{{ ci_provider == 'forgejo' }}"
+
+docs_tenant:
+  type: str
+  help: "Docs tenant: the URL path under docs.lx.e6a.app (lowercase letters, digits and dashes)"
+  default: "{{ directory_name }}"
+  when: "{{ ci_provider == 'forgejo' and publish_docs }}"
+  validator: >-
+    {% if not (docs_tenant | regex_search('^[a-z0-9][a-z0-9-]*$')) %}
+    The docs tenant must match [a-z0-9][a-z0-9-]*
+    {% endif %}
+
 dependency_updates:
   type: str
   help: "Set up automated dependency updates with Renovate?"
@@ -120,6 +138,13 @@ dependency_updates:
   choices:
     "Renovate": "renovate"
     "None": "none"
+
+# Files a project owns once they exist. CLAUDE.md was filled by hand in projects
+# generated before AGENTS.md, and docs/index.md is the project's own home page,
+# so an update must not merge the template's version into them.
+_skip_if_exists:
+  - "CLAUDE.md"
+  - "docs/index.md"
 
 # --- Conditional file exclusion ---
 
@@ -129,11 +154,17 @@ _exclude:
   - "__pycache__/"
   - "*.pyc"
   - "{% if ci_provider != 'github' %}.github/workflows/ci.yml{% endif %}"
-  - "{% if ci_provider != 'github' %}.github/workflows/build.yml{% endif %}"
+  - "{% if ci_provider != 'github' or project_type == 'docs' %}.github/workflows/build.yml{% endif %}"
   - "{% if ci_provider != 'github' %}.github/workflows/copier-update.yml{% endif %}"
   - "{% if ci_provider != 'forgejo' %}.forgejo/workflows/ci.yml{% endif %}"
   - "{% if ci_provider != 'forgejo' %}.forgejo/workflows/copier-update.yml{% endif %}"
+  - "{% if ci_provider != 'forgejo' or not publish_docs %}.forgejo/workflows/docs.yml{% endif %}"
   - "{% if project_type != 'cli' %}{{ pkg_name }}/cli.py{% endif %}"
+  - "{% if project_type == 'docs' %}tests{% endif %}"
+  - "{% if project_type == 'docs' %}conftest.py{% endif %}"
+  - "{% if project_type == 'docs' %}Dockerfile{% endif %}"
+  - "{% if project_type == 'docs' %}.dockerignore{% endif %}"
+  - "{% if project_type == 'docs' %}docs/reference.md{% endif %}"
   - "{% if dependency_updates != 'renovate' %}renovate.json{% endif %}"
   - "{% if dependency_updates != 'renovate' or ci_provider != 'github' %}.github/workflows/renovate.yml{% endif %}"
   - "{% if dependency_updates != 'renovate' or ci_provider != 'forgejo' %}.forgejo/workflows/renovate.yml{% endif %}"

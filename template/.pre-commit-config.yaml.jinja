@@ -1,6 +1,6 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-default_install_hook_types: [pre-commit, pre-push]
+default_install_hook_types: [pre-commit{% if project_type != "docs" %}, pre-push{% endif %}]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -18,7 +18,7 @@ repos:
         stages: [pre-commit]
       - id: check-json
         stages: [pre-commit]
-
+{% if project_type != "docs" %}
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.17
     hooks:
@@ -35,7 +35,8 @@ repos:
         args: ["-c", "pyproject.toml"]
         additional_dependencies: ["bandit[toml]"]
         exclude: ^tests/
-{% if ci_provider == "github" %}
+{% endif %}
+{%- if ci_provider == "github" %}
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.12
     hooks:
@@ -44,6 +45,7 @@ repos:
 {% endif %}
   - repo: local
     hooks:
+{%- if project_type != "docs" %}
       - id: pyright
         name: pyright
         entry: uv run pyright
@@ -51,6 +53,16 @@ repos:
         types: [python]
         stages: [pre-commit]
         pass_filenames: false
+{% endif %}
+      - id: mkdocs-build
+        name: mkdocs build
+        entry: uv run mkdocs build --strict
+        language: system
+        files: ^(docs/|mkdocs\.yml$
+{%- if project_type != "docs" %}|{{ pkg_name }}/{% endif %})
+        stages: [pre-commit]
+        pass_filenames: false
+{%- if project_type != "docs" %}
 
       - id: pytest
         name: pytest
@@ -59,3 +71,4 @@ repos:
         pass_filenames: false
         stages: [pre-push]
         verbose: true
+{%- endif %}
