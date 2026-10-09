@@ -44,6 +44,8 @@ _Itens marcados estão implementados!_
 * [x] Relatório de Coverage no Pytest
 * [x] Configurações modernas em pyproject.toml
 * [x] Pipeline de CI opcional (GitHub Actions ou Forgejo Actions)
+* [x] Site de documentação MkDocs em todo projeto, com publicação opcional no Forgejo
+* [x] Tipo de projeto só de documentação, sem pacote Python
 * [x] Atualização de projetos existentes com `copier update`
 
 ### Hooks Habilitados
@@ -52,6 +54,7 @@ _Itens marcados estão implementados!_
 * [x] Pyright (verificação de tipos)
 * [x] Bandit (segurança)
 * [x] actionlint (valida workflows do GitHub Actions, quando aplicável)
+* [x] MkDocs (build estrito da documentação)
 * [x] Hooks básicos (trailing whitespace, end-of-file, etc.)
 
 ---
@@ -91,6 +94,8 @@ _Checked items are implemented_
 * [x] Coverage report on Pytest
 * [x] Modern pyproject.toml configuration
 * [x] Optional CI pipeline (GitHub Actions or Forgejo Actions)
+* [x] MkDocs documentation site in every project, with optional publishing on Forgejo
+* [x] Docs-only project type, with no Python package
 * [x] Update existing projects with `copier update`
 
 ### Hooks
@@ -99,4 +104,5 @@ _Checked items are implemented_
 * [x] Pyright (type checking)
 * [x] Bandit (security)
 * [x] actionlint (validates GitHub Actions workflows, when applicable)
+* [x] MkDocs (strict build of the documentation)
 * [x] Basic hooks (trailing whitespace, end-of-file, etc.)

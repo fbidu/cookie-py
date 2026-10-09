@@ -23,5 +23,7 @@ jobs:
           key: prek-{% raw %}${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}{% endraw %}
       - name: prek (commit stage)
         run: uv run prek run --all-files --show-diff-on-failure --hook-stage pre-commit
+{%- if project_type != "docs" %}
       - name: prek (push stage — pytest)
         run: uv run prek run --all-files --show-diff-on-failure --hook-stage pre-push
+{%- endif %}

@@ -11,5 +11,5 @@ Here be awesome code!
 """
 
 if __name__ == "__main__":
-    print("Hello, {{ author }}")
+    print({{ ("Hello, " ~ author) | to_json(ensure_ascii=False) }})
 {%- endif %}

@@ -40,10 +40,14 @@ env/
 
 # Project-level files irrelevant to runtime
 README.md
+AGENTS.md
 CLAUDE.md
 LICENSE
 COPYING
 tests/
+docs/
+mkdocs.yml
+site/
 .pre-commit-config.yaml
 .github/
 .forgejo/

@@ -1,10 +1,27 @@
 [project]
 name = "{{ directory_name }}"
 version = "{{ version }}"
-description = "{{ description }}"
-authors = [{ name = "{{ author }}" }]
+description = {{ description | to_json(ensure_ascii=False) }}
+authors = [{ name = {{ author | to_json(ensure_ascii=False) }} }]
 license = { text = "{{ license }}" }
 requires-python = ">={{ python_version }}"
+{%- if project_type == "docs" %}
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "prek>=0.4",
+    { include-group = "docs" },
+]
+docs = [
+    "mkdocs-material>=9.7.0",
+    "mkdocs<2", # MkDocs 2.0 is a breaking rewrite with no migration path
+]
+
+# Nothing to build or install: this project is the docs site.
+[tool.uv]
+package = false
+{%- else %}
 {%- if project_type == "cli" %}
 dependencies = [
     "click>=8.1.0",
@@ -35,6 +52,12 @@ dev = [
     "pytest-xdist>=3.6.0",
     "pytest>=8.0.0",
     "ruff>=0.8.0",
+    { include-group = "docs" },
+]
+docs = [
+    "mkdocs-material>=9.7.0",
+    "mkdocs<2", # MkDocs 2.0 is a breaking rewrite with no migration path
+    "mkdocstrings[python]>=1.0.0",
 ]
 
 [tool.pytest.ini_options]
@@ -101,3 +124,4 @@ typeCheckingMode = "strict"
 [tool.bandit]
 exclude_dirs = ["tests"]
 skips = ["B101"]
+{%- endif %}
