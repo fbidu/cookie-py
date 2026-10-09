@@ -622,6 +622,68 @@ class TestCIProviderGeneration:
         assert "${{ hashFiles(" in ci_yml
         assert "{% raw %}" not in ci_yml, "Unrendered jinja raw block found"
 
+    def test_forgejo_ci_names_the_memory_cap(self, tmp_path: Path) -> None:
+        """A job over the runner's memory cap dies with nothing but exit 137.
+
+        The workflow is where someone debugging that death looks first, so it
+        has to name the cap and the symptom.
+        """
+        project_dir = _generate_project(tmp_path / "forgejo", {"ci_provider": "forgejo"})
+
+        ci_yml = (project_dir / ".forgejo/workflows/ci.yml").read_text()
+
+        assert "2 GiB" in ci_yml
+        assert "137" in ci_yml
+
+    def test_forgejo_ci_points_container_tests_to_dind(self, tmp_path: Path) -> None:
+        """Tests that start their own services cannot reach them on the default runner.
+
+        The job runs pytest, so the workflow says which runner fixes that. A
+        docs-only project runs no tests, so the note would only mislead there.
+        """
+        # Setup
+        with_tests = _generate_project(tmp_path / "library", {"ci_provider": "forgejo"})
+        docs_only = _generate_project(
+            tmp_path / "docs", {"ci_provider": "forgejo", "project_type": "docs"}
+        )
+
+        # Act
+        ci_yml = (with_tests / ".forgejo/workflows/ci.yml").read_text()
+        docs_ci_yml = (docs_only / ".forgejo/workflows/ci.yml").read_text()
+
+        # Assert
+        assert "hook-stage pre-push" in ci_yml, "Sanity check: the job runs pytest"
+        assert "`runs-on: dind`" in ci_yml
+        assert "runs-on: ubuntu-latest" in ci_yml, "dind is documented, not the default"
+        assert "dind" not in docs_ci_yml
+
+    def test_forgejo_ci_caches_uv_before_syncing(self, tmp_path: Path) -> None:
+        """The uv cache only saves downloads when it is restored before the sync.
+
+        The key must not use `runner.os`: on the homelab runners it evaluates
+        to both `Linux` and `linux`, so the cache would miss half the time.
+        """
+        project_dir = _generate_project(tmp_path / "forgejo", {"ci_provider": "forgejo"})
+
+        ci_yml = (project_dir / ".forgejo/workflows/ci.yml").read_text()
+
+        assert "path: ~/.cache/uv" in ci_yml
+        assert "key: uv-${{ hashFiles('uv.lock') }}" in ci_yml
+        assert ci_yml.index("path: ~/.cache/uv") < ci_yml.index("uv sync")
+        assert "runner.os" not in ci_yml
+
+    def test_forgejo_ci_cancels_superseded_runs(self, tmp_path: Path) -> None:
+        """The runner is shared, so a run made obsolete by a newer push must free its slot."""
+        project_dir = _generate_project(tmp_path / "forgejo", {"ci_provider": "forgejo"})
+
+        ci_yml = (project_dir / ".forgejo/workflows/ci.yml").read_text()
+
+        assert (
+            "concurrency:\n"
+            "  group: ${{ github.workflow }}-${{ github.ref }}\n"
+            "  cancel-in-progress: true\n"
+        ) in ci_yml
+
     def test_no_ci_generates_nothing(self, tmp_path: Path) -> None:
         """ci_provider=none produces no CI files for any provider."""
         project_dir = _generate_project(tmp_path / "none", {"ci_provider": "none"})

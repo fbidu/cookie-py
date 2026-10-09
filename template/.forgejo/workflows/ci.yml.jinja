@@ -18,8 +18,27 @@ on:
     branches:
       - main
 
+# The runners are shared with every other repo. A newer push to the same ref
+# makes the running one obsolete, so cancel it and free its slot.
+concurrency:
+  group: {% raw %}${{ github.workflow }}-${{ github.ref }}{% endraw %}
+  cancel-in-progress: true
+
 jobs:
   prek:
+    # `ubuntu-latest` is the default `homelab` runner. It caps each job at
+    # 2 GiB of memory with swap off: a job that goes over is OOM-killed and
+    # exits with code 137, with no warning first.
+{%- if project_type != "docs" %}
+    #
+    # Tests that start their own services (testcontainers, a compose database)
+    # need `runs-on: dind`. On the default runner such a service publishes to
+    # the host's loopback, so the tests cannot reach it on 127.0.0.1. `dind`
+    # runs one job at a time and keeps its own cache, so move only a job that
+    # needs it.
+{%- endif %}
+    #
+    # Runners and limits: https://docs.lx.e6a.app/ansible/conventions/#cicd
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -27,6 +46,14 @@ jobs:
       - name: Install uv
         # PEP 668: the job container's Python is externally managed.
         run: pip install --no-cache-dir --break-system-packages uv
+
+      # Before adding or changing a cache key, read
+      # https://docs.lx.e6a.app/ansible/ci-caching/
+      - name: Cache uv
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/uv
+          key: uv-{% raw %}${{ hashFiles('uv.lock') }}{% endraw %}
 
       - name: Install Python {{ python_version }}
         run: uv python install {{ python_version }}
