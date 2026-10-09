@@ -247,6 +247,18 @@ class TestCopierGeneration:
         )
         assert result.returncode == 0, f"Ruff check failed: {result.stdout}\n{result.stderr}"
 
+    def test_ruff_hooks_run_the_projects_ruff(self, generated_project: Path) -> None:
+        """The hooks must lint and format with the ruff that `uv run ruff` uses.
+
+        A hook with its own pinned ruff can format a file differently from the
+        locked one, so a commit that is clean locally fails in CI.
+        """
+        hooks = (generated_project / ".pre-commit-config.yaml").read_text()
+
+        assert "ruff-pre-commit" not in hooks
+        assert "entry: uv run ruff check --fix --force-exclude" in hooks
+        assert "entry: uv run ruff format --force-exclude" in hooks
+
     def test_type_checking_passes(self, generated_project: Path) -> None:
         """Test that pyright passes on the generated project."""
         result = subprocess.run(
@@ -545,12 +557,12 @@ class TestDockerImage:
 class TestPythonVersions:
     """Test that generated projects work with each supported Python version.
 
-    This catches pin drift between template choices and tool versions
-    (e.g., prek hooks pinned to an old ruff that doesn't recognize a newer target-version).
+    This catches drift between template choices and tool versions
+    (e.g., a ruff floor too old to recognize a newer target-version).
     """
 
     def test_ruff_check_accepts_target_version(self, tmp_path: Path, python_version: str) -> None:
-        """Prek's pinned ruff must understand the chosen python_version target."""
+        """The ruff hooks must understand the chosen python_version target."""
         if not which("prek"):
             pytest.skip("prek not installed")
 
@@ -563,12 +575,10 @@ class TestPythonVersions:
         subprocess.run(["git", "init", "-q"], cwd=project_dir, check=True)
         subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
 
-        # Run ONLY the ruff hook so the test stays fast.
-        # This uses the ruff version pinned in .pre-commit-config.yaml,
-        # not the dev-dep ruff, so it catches pin drift between template
-        # choices and prek hook versions.
+        # Run ONLY the ruff hooks so the test stays fast. They call
+        # `uv run ruff`, which installs the project's dev dependencies first.
         result = subprocess.run(
-            ["prek", "run", "ruff", "--all-files"],
+            ["prek", "run", "ruff", "ruff-format", "--all-files"],
             capture_output=True,
             text=True,
             cwd=project_dir,
@@ -577,7 +587,7 @@ class TestPythonVersions:
         # prek collapses both "hook failed" and "files modified" into exit 1,
         # so we also check the output for the "Failed" status marker.
         assert result.returncode == 0 and "Failed" not in result.stdout, (
-            f"Prek ruff hook failed on py{python_version}:\n"
+            f"Prek ruff hooks failed on py{python_version}:\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
