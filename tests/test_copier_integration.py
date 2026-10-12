@@ -1032,6 +1032,67 @@ class TestApiClientProject:
         errors = (generated_api_client_project / "my_awesome_project/errors.py").read_text()
         assert "class MyAwesomeProjectError(Exception):" in errors
 
+    def test_base_error_can_be_named_by_the_project(self, tmp_path: Path) -> None:
+        """A name derived from the package cannot know how a product is capitalised.
+
+        `simplelogin` gives `SimpleloginError`, and the product is SimpleLogin.
+        The answer is recorded, so a later update renders the same name. The
+        name moves inside sorted lists, so the linter and the formatter run too.
+        """
+        project_dir = _generate_project(
+            tmp_path / "simplelogin-sdk",
+            {
+                "project_type": "api-client",
+                "directory_name": "simplelogin-sdk",
+                "pkg_name": "simplelogin",
+                "error_class": "SimpleLoginError",
+            },
+        )
+        subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
+
+        errors = (project_dir / "simplelogin/errors.py").read_text()
+        assert "class SimpleLoginError(Exception):" in errors
+        assert "class APIError(SimpleLoginError):" in errors
+        assert "`SimpleLoginError`" in (project_dir / "AGENTS.md").read_text()
+        answers = (project_dir / ".copier-answers.yml").read_text()
+        assert "error_class: SimpleLoginError\n" in answers
+        derived = [
+            str(path.relative_to(project_dir))
+            for path in project_dir.rglob("*")
+            if path.is_file()
+            and ".venv" not in path.parts
+            and path.suffix in {".py", ".md"}
+            and "SimpleloginError" in path.read_text()
+        ]
+        assert derived == [], "The derived name is still rendered"
+        for command in (["ruff", "check", "."], ["ruff", "format", "--check", "."], ["pytest"]):
+            result = subprocess.run(
+                ["uv", "run", *command], capture_output=True, text=True, cwd=project_dir
+            )
+            assert result.returncode == 0, f"{command} failed: {result.stdout}\n{result.stderr}"
+
+    def test_base_error_defaults_to_a_name_derived_from_the_package(
+        self, generated_api_client_project: Path, generated_project: Path
+    ) -> None:
+        """Most package names already read well as a class name, so Enter accepts one.
+
+        Only an API client has the class, so no other project type records the answer.
+        """
+        answers = (generated_api_client_project / ".copier-answers.yml").read_text()
+
+        assert "error_class: MyAwesomeProjectError\n" in answers
+        assert "error_class" not in (generated_project / ".copier-answers.yml").read_text()
+
+    def test_base_error_must_be_a_class_name(self, tmp_path: Path) -> None:
+        """The answer is rendered into code, where anything but an identifier is a syntax error."""
+        result = _run_copier(
+            tmp_path / "bad-error-class",
+            {"project_type": "api-client", "error_class": "Simple Login Error"},
+        )
+
+        assert result.returncode != 0, "Copier accepted a name that is not an identifier"
+        assert "class name" in result.stderr
+
     def test_linting_passes(self, generated_api_client_project: Path) -> None:
         """A freshly generated API client must lint clean."""
         result = subprocess.run(

@@ -1,5 +1,5 @@
 {%- if project_type == "api-client" -%}
-{#- The base error is named after the package, so its place in each list is
+{#- The project names the base error, so its place in each list is
     only known here. Ruff sorts imports ignoring case and `__all__` minding it. -#}
 {%- set errors = [
     "APIError",

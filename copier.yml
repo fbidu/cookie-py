@@ -54,11 +54,17 @@ spec_first:
   default: false
   when: "{{ project_type == 'api-client' }}"
 
-# Computed, never asked: the base class of the exceptions of an API client.
+# The default cannot know how a product is capitalised: `simplelogin` gives
+# `SimpleloginError`. Other project types have no such class, so they are not asked.
 error_class:
   type: str
+  help: "Name of the base class of the client's exceptions"
   default: "{{ pkg_name | replace('_', ' ') | title | replace(' ', '') }}Error"
-  when: false
+  when: "{{ project_type == 'api-client' }}"
+  validator: >-
+    {% if not (error_class | regex_search('^[A-Za-z_][A-Za-z0-9_]*$')) %}
+    The base error must be a class name: letters, digits and underscores
+    {% endif %}
 
 description:
   type: str
