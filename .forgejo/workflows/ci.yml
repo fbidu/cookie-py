@@ -46,6 +46,11 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install uv
         run: pip install --no-cache-dir --break-system-packages uv
+      - name: Install Python 3.14
+        # Without a version, uv downloads the newest CPython it knows. A new
+        # release then breaks the sync until every locked dependency has a
+        # wheel for it.
+        run: uv python install 3.14
       - name: Install dependencies
         run: uv sync --dev
       - uses: actions/cache@v6

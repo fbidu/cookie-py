@@ -66,6 +66,12 @@ jobs:
         enable-cache: true
         cache-dependency-glob: uv.lock
 
+    - name: Install Python 3.14
+      # Without a version, uv downloads the newest CPython it knows. A new
+      # release then breaks the sync until every locked dependency has a
+      # wheel for it.
+      run: uv python install 3.14
+
     - name: Install dependencies
       run: uv sync --dev
 
