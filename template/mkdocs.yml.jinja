@@ -2,7 +2,7 @@ site_name: {{ project_name | to_json(ensure_ascii=False) }}
 site_description: {{ description | to_json(ensure_ascii=False) }}
 {%- if ci_provider == "forgejo" and publish_docs %}
 # MkDocs uses this for the 404 page, the sitemap and canonical links.
-site_url: https://docs.example.com/{{ docs_tenant }}/
+site_url: https://{{ docs_host }}/{{ docs_tenant }}/
 {%- endif %}
 # Pages live in docs/ and the build goes to site/ (gitignored): the MkDocs defaults.
 

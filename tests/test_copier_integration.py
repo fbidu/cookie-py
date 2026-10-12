@@ -486,7 +486,12 @@ class TestDocsPublishing:
         """
         project_dir = _generate_project(
             tmp_path / "publish",
-            {"ci_provider": "forgejo", "publish_docs": True, "docs_tenant": "my-tenant"},
+            {
+                "ci_provider": "forgejo",
+                "publish_docs": True,
+                "docs_host": "docs.example.com",
+                "docs_tenant": "my-tenant",
+            },
         )
 
         workflow = (project_dir / ".forgejo/workflows/docs.yml").read_text()
@@ -498,11 +503,48 @@ class TestDocsPublishing:
         assert "{% raw %}" not in workflow, "Unrendered jinja raw block found"
         mkdocs_yml = (project_dir / "mkdocs.yml").read_text()
         assert "site_url: https://docs.example.com/my-tenant/" in mkdocs_yml
+        for file_path in ("README.md", "AGENTS.md", ".forgejo/workflows/docs.yml"):
+            rendered = (project_dir / file_path).read_text()
+            assert "https://docs.example.com/my-tenant/" in rendered, f"No site URL in {file_path}"
+
+    def test_publishing_needs_a_docs_host(self, tmp_path: Path) -> None:
+        """The template is public and the docs host is not, so it carries no default host.
+
+        A project that publishes without one would get a workflow and a
+        site_url that point nowhere, so generation stops instead.
+        """
+        result = _run_copier(tmp_path / "no-host", {"ci_provider": "forgejo", "publish_docs": True})
+
+        assert result.returncode != 0, "Copier accepted publishing without a docs host"
+        assert '"docs_host" is required' in result.stderr
+
+    def test_docs_host_can_come_from_the_user_settings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Typing the host for every project is what a default would have spared.
+
+        Copier reads default answers from a settings file on the user's
+        machine, which keeps the host out of the template and still records
+        it in the project, where a later update finds it.
+        """
+        settings = tmp_path / "settings.yml"
+        settings.write_text("defaults:\n  docs_host: docs.example.org\n")
+        monkeypatch.setenv("COPIER_SETTINGS_PATH", str(settings))
+
+        project_dir = _generate_project(
+            tmp_path / "host-from-settings", {"ci_provider": "forgejo", "publish_docs": True}
+        )
+
+        mkdocs_yml = (project_dir / "mkdocs.yml").read_text()
+        assert "site_url: https://docs.example.org/my-awesome-project/" in mkdocs_yml
+        answers = (project_dir / ".copier-answers.yml").read_text()
+        assert "docs_host: docs.example.org\n" in answers
 
     def test_tenant_defaults_to_the_directory_name(self, tmp_path: Path) -> None:
         """The tenant is the URL path, and the project's own name is the obvious one."""
         project_dir = _generate_project(
-            tmp_path / "default-tenant", {"ci_provider": "forgejo", "publish_docs": True}
+            tmp_path / "default-tenant",
+            {"ci_provider": "forgejo", "publish_docs": True, "docs_host": "docs.example.com"},
         )
 
         workflow = (project_dir / ".forgejo/workflows/docs.yml").read_text()
@@ -515,7 +557,12 @@ class TestDocsPublishing:
         """
         result = _run_copier(
             tmp_path / "bad-tenant",
-            {"ci_provider": "forgejo", "publish_docs": True, "docs_tenant": "Bad_Tenant"},
+            {
+                "ci_provider": "forgejo",
+                "publish_docs": True,
+                "docs_host": "docs.example.com",
+                "docs_tenant": "Bad_Tenant",
+            },
         )
 
         assert result.returncode != 0, "Copier accepted an invalid tenant"
@@ -940,7 +987,12 @@ class TestDocsOnlyProject:
         """The publish workflow must not trigger on a package folder that does not exist."""
         project_dir = _generate_project(
             tmp_path / "docs-publish",
-            {"project_type": "docs", "ci_provider": "forgejo", "publish_docs": True},
+            {
+                "project_type": "docs",
+                "ci_provider": "forgejo",
+                "publish_docs": True,
+                "docs_host": "docs.example.com",
+            },
         )
 
         workflow = (project_dir / ".forgejo/workflows/docs.yml").read_text()

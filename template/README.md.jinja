@@ -62,9 +62,9 @@ The docs are an MkDocs site: pages in `docs/`, config in `mkdocs.yml`.{% if proj
 - `uv run mkdocs serve` - Preview the site at <http://127.0.0.1:8000>
 - `uv run mkdocs build --strict` - Build into `site/`, failing on broken links (the pre-commit hook runs this)
 {% if ci_provider == "forgejo" and publish_docs %}
-Every push to `main` that touches the docs publishes the site to <https://docs.example.com/{{ docs_tenant }}/> (homelab LAN only), through `.forgejo/workflows/docs.yml`.
+Every push to `main` that touches the docs publishes the site to <https://{{ docs_host }}/{{ docs_tenant }}/> (homelab LAN only), through `.forgejo/workflows/docs.yml`.
 
-The workflow needs a `DOCS_PUBLISH_KEY_B64` Actions secret on the repo's **owner** (account or org), not on the repo. An owner that already publishes docs has one. For a new org, follow [Publishing docs](https://docs.example.com/ansible/publishing-docs/).
+The workflow needs a `DOCS_PUBLISH_KEY_B64` Actions secret on the repo's **owner** (account or org), not on the repo. An owner that already publishes docs has one. For a new org, follow [Publishing docs](https://{{ docs_host }}/ansible/publishing-docs/).
 {% endif %}
 {% if project_type == "api-client" and spec_first %}
 ### Producing the OpenAPI document
@@ -182,9 +182,9 @@ A documentação é um site MkDocs: páginas em `docs/`, configuração em `mkdo
 - `uv run mkdocs serve` - Pré-visualizar o site em <http://127.0.0.1:8000>
 - `uv run mkdocs build --strict` - Gerar o site em `site/`, falhando em links quebrados (o hook de pre-commit executa isso)
 {% if ci_provider == "forgejo" and publish_docs %}
-Todo push para a `main` que altera a documentação publica o site em <https://docs.example.com/{{ docs_tenant }}/> (apenas na LAN do homelab), pelo `.forgejo/workflows/docs.yml`.
+Todo push para a `main` que altera a documentação publica o site em <https://{{ docs_host }}/{{ docs_tenant }}/> (apenas na LAN do homelab), pelo `.forgejo/workflows/docs.yml`.
 
-O workflow precisa de um Actions secret `DOCS_PUBLISH_KEY_B64` no **dono** do repositório (conta ou organização), não no repositório. Um dono que já publica documentação já tem um. Para uma organização nova, siga [Publishing docs](https://docs.example.com/ansible/publishing-docs/).
+O workflow precisa de um Actions secret `DOCS_PUBLISH_KEY_B64` no **dono** do repositório (conta ou organização), não no repositório. Um dono que já publica documentação já tem um. Para uma organização nova, siga [Publishing docs](https://{{ docs_host }}/ansible/publishing-docs/).
 {% endif %}
 {% if project_type == "api-client" and spec_first %}
 ### Produzindo o documento OpenAPI

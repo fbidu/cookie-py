@@ -38,7 +38,8 @@ jobs:
     # needs it.
 {%- endif %}
     #
-    # Runners and limits: https://docs.example.com/ansible/conventions/#cicd
+    # Runners and limits: the CI/CD section of the conventions page in the
+    # homelab `ansible` docs.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -47,8 +48,8 @@ jobs:
         # PEP 668: the job container's Python is externally managed.
         run: pip install --no-cache-dir --break-system-packages uv
 
-      # Before adding or changing a cache key, read
-      # https://docs.example.com/ansible/ci-caching/
+      # Before adding or changing a cache key, read the CI caching page in the
+      # homelab `ansible` docs.
       - name: Cache uv
         uses: actions/cache@v6.1.0
         with:

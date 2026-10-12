@@ -136,13 +136,24 @@ repo_visibility:
 
 publish_docs:
   type: bool
-  help: "Publish the docs to docs.example.com on every push to main?"
+  help: "Publish the docs to the homelab docs host on every push to main?"
   default: false
   when: "{{ ci_provider == 'forgejo' }}"
 
+# No default: this template is public and the host is not. Copier's user
+# settings file can hold it, so that it is not typed for every project.
+docs_host:
+  type: str
+  help: "Docs host: the hostname the docs are served from, such as docs.example.com"
+  when: "{{ ci_provider == 'forgejo' and publish_docs }}"
+  validator: >-
+    {% if not (docs_host | regex_search('^[a-z0-9][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)+$')) %}
+    The docs host must be a hostname such as docs.example.com
+    {% endif %}
+
 docs_tenant:
   type: str
-  help: "Docs tenant: the URL path under docs.example.com (lowercase letters, digits and dashes)"
+  help: "Docs tenant: the URL path under the docs host (lowercase letters, digits and dashes)"
   default: "{{ directory_name }}"
   when: "{{ ci_provider == 'forgejo' and publish_docs }}"
   validator: >-

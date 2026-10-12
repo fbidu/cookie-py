@@ -31,6 +31,17 @@ Sinta-se livre para usar, forkear e modificar a vontade!
 3. Execute `copier copy gh:fbidu/cookie-py meu-projeto`
 4. O seu terminal irá te perguntar tudo o que precisar!
 
+### Respostas pessoais
+
+Algumas respostas são as mesmas em todo projeto e não cabem em um modelo público, como o host da documentação (`docs_host`). O Copier lê respostas padrão de um arquivo de configurações na sua máquina: o `settings.yml` do diretório de configuração do Copier, ou o caminho na variável `COPIER_SETTINGS_PATH`.
+
+```yaml
+defaults:
+  docs_host: docs.example.com
+```
+
+A resposta fica registrada no `.copier-answers.yml` do projeto gerado, então um `copier update` posterior não depende desse arquivo.
+
 ### Itens Inclusos
 
 _Itens marcados estão implementados!_
@@ -82,6 +93,17 @@ Feel free to use, fork and modify at will!
 2. Install [Copier](https://copier.readthedocs.io/en/stable/#installation): `uv tool install copier`
 3. Run `copier copy gh:fbidu/cookie-py my-project`
 4. Your terminal will ask you everything it needs!
+
+### Personal answers
+
+Some answers are the same in every project and do not belong in a public template, such as the docs host (`docs_host`). Copier reads default answers from a settings file on your machine: `settings.yml` in Copier's config directory, or the path in the `COPIER_SETTINGS_PATH` variable.
+
+```yaml
+defaults:
+  docs_host: docs.example.com
+```
+
+The answer is recorded in the `.copier-answers.yml` of the generated project, so a later `copier update` does not depend on that file.
 
 ### Batteries Included
 

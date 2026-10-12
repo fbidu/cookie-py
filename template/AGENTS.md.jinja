@@ -39,7 +39,7 @@
 
 ## Publishing
 
-- A push to `main` that changes the documentation publishes the site to <https://docs.example.com/{{ docs_tenant }}/>. Such a push is outward-facing.
+- A push to `main` that changes the documentation publishes the site to <https://{{ docs_host }}/{{ docs_tenant }}/>. Such a push is outward-facing.
 - Everything in `docs/` is published. It therefore never holds the following (secrets, tokens, personal data, raw captures).
 {%- endif %}
 {% else %}
@@ -109,7 +109,7 @@
 - The strict build must pass. The pre-commit hook runs it, so a broken link fails the commit.
 - `uv run mkdocs serve` previews the site at <http://127.0.0.1:8000>.
 {%- if ci_provider == "forgejo" and publish_docs %}
-- A push to `main` that changes the documentation publishes the site to <https://docs.example.com/{{ docs_tenant }}/>. Such a push is outward-facing.
+- A push to `main` that changes the documentation publishes the site to <https://{{ docs_host }}/{{ docs_tenant }}/>. Such a push is outward-facing.
 - Everything in `docs/` is published. It therefore never holds secrets, tokens or raw captures.
 {%- endif %}
 {% endif -%}

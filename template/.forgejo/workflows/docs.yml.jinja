@@ -1,12 +1,12 @@
 ---
 # Build the MkDocs site and publish it as the `{{ docs_tenant }}` tenant of the
-# homelab docs host: https://docs.example.com/{{ docs_tenant }}/
+# homelab docs host: https://{{ docs_host }}/{{ docs_tenant }}/
 #
 # Publishing is one SSH call as `docspub`. Its key is pinned host-side to a
 # forced command that can only swap in a docs tenant and refresh the landing
 # index. The key comes from the DOCS_PUBLISH_KEY_B64 Actions secret, which is
 # set per owner (account or org), not per repo. How to add one for a new org:
-# https://docs.example.com/ansible/publishing-docs/
+# https://{{ docs_host }}/ansible/publishing-docs/
 #
 # `runs-on: homelab`: the docs host is only reachable from the homelab runner.
 name: docs
@@ -36,7 +36,7 @@ jobs:
           /tmp/uv-venv/bin/pip install --no-cache-dir uv
           /tmp/uv-venv/bin/uv run --frozen --only-group docs mkdocs build --strict
 
-      - name: Publish to docs.example.com/{{ docs_tenant }}/
+      - name: Publish to {{ docs_host }}/{{ docs_tenant }}/
         env:
           DOCS_PUBLISH_KEY_B64: {% raw %}${{ secrets.DOCS_PUBLISH_KEY_B64 }}{% endraw %}
         run: |
