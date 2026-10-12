@@ -6,7 +6,7 @@ description: Initialise this spec-first API client. Use when `openapi.yaml` does
 # Initialise the SDK
 
 - This project is a spec-first API client. `openapi.yaml` is written first, and the client is derived from it.
-- This skill takes the project from the generated scaffold to a reviewed `openapi.yaml`. It adds no endpoint to the client.
+- This skill takes the project from the generated scaffold to a reviewed `openapi.yaml` and the models generated from it. It adds no endpoint to the client.
 - When `openapi.yaml` exists at the repository root, the project is already initialised. Say so and stop.
 
 ## 1. Ask about the API
@@ -90,5 +90,6 @@ description: Initialise this spec-first API client. Use when `openapi.yaml` does
 
 - Report to the user the number of operations in `openapi.yaml`, its tags, the discrepancies that remain and the tokens the run used.
 - The user reviews `openapi.yaml` before it is committed.
-- Commit the sources and the filled placeholders in one commit, and `openapi.yaml` in another.
+- After the user accepts the document, run `uv run datamodel-codegen`. It writes `{{ pkg_name }}/models.py`, which is never edited by hand.
+- Commit the sources and the filled placeholders in one commit. Commit `openapi.yaml` and `{{ pkg_name }}/models.py` together in another: a hook fails the commit when the two do not match.
 - From here on, the rules in `AGENTS.md` apply. The client gains an endpoint only after `openapi.yaml` describes it.

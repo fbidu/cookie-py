@@ -69,8 +69,10 @@ docs = [
     "mkdocstrings[python]>=1.0.0",
 ]
 {%- if project_type == "api-client" and spec_first %}
-# The agents in `tools/openapi_agents`, which write `openapi.yaml`.
+# What a spec-first client is built with: the generator of the models and the
+# agents in `tools/openapi_agents`, which write `openapi.yaml`.
 tools = [
+    "datamodel-code-generator>=0.83.0",
     "openapi-spec-validator>=0.9.0",
     "pydantic-ai-slim[openrouter]>=2.54.0",
     "pyyaml>=6.0.3",
@@ -158,4 +160,21 @@ typeCheckingMode = "strict"
 [tool.bandit]
 exclude_dirs = ["tests"]
 skips = ["B101"]
+{%- if project_type == "api-client" and spec_first %}
+
+[tool.datamodel-codegen]
+input = "openapi.yaml"
+input-file-type = "openapi"
+output = "{{ pkg_name }}/models.py"
+output-model-type = "pydantic_v2.BaseModel"
+target-python-version = "{{ python_version }}"
+# An API adds response fields without notice, and a model must not reject them.
+extra-fields = "ignore"
+use-standard-collections = true
+use-union-operator = true
+use-schema-description = true
+use-annotated = true
+custom-file-header = "# Generated from openapi.yaml by datamodel-codegen. Do not edit; run `uv run datamodel-codegen`."
+formatters = ["ruff-format", "ruff-check"]
+{%- endif %}
 {%- endif %}

@@ -24,6 +24,51 @@ DEFAULT_DATA: dict[str, str | bool] = {
     "ci_provider": "github",
     "dependency_updates": "renovate",
 }
+# A small document for the tests of the spec-first option: one operation, one
+# enum, a described field and a nullable one.
+OPENAPI_DOCUMENT = """\
+openapi: 3.1.0
+info:
+  title: Example
+  version: "1"
+paths:
+  /forecasts/{city}:
+    get:
+      operationId: getForecast
+      tags: [forecasts]
+      parameters:
+        - name: city
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The forecast of a city.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Forecast"
+components:
+  schemas:
+    Sky:
+      type: string
+      enum: [clear, cloudy, rain]
+    Forecast:
+      type: object
+      required: [city, sky, issued_at]
+      properties:
+        city:
+          type: string
+        sky:
+          $ref: "#/components/schemas/Sky"
+        issued_at:
+          type: integer
+          description: When the forecast was issued, as a Unix timestamp in seconds.
+        high:
+          type: [number, "null"]
+          description: The highest temperature of the day, in degrees Celsius.
+"""
 # Variables git exports to its hooks to locate the repo being committed or pushed.
 GIT_REPO_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_PREFIX")
 
@@ -1146,7 +1191,12 @@ class TestSpecFirstApiClient:
         dependencies = [spec.split(">=")[0] for spec in pyproject["project"]["dependencies"]]
         assert sorted(dependencies) == ["httpx2", "pydantic", "pydantic-settings"]
         tools = [spec.split(">=")[0] for spec in pyproject["dependency-groups"]["tools"]]
-        assert tools == ["openapi-spec-validator", "pydantic-ai-slim[openrouter]", "pyyaml"]
+        assert tools == [
+            "datamodel-code-generator",
+            "openapi-spec-validator",
+            "pydantic-ai-slim[openrouter]",
+            "pyyaml",
+        ]
         assert {"include-group": "tools"} in pyproject["dependency-groups"]["dev"]
         wheel = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]
         assert wheel["packages"] == ["my_awesome_project"]
@@ -1159,7 +1209,10 @@ class TestSpecFirstApiClient:
             assert not (generated_api_client_project / path).exists(), f"Unexpected: {path}"
         pyproject = (generated_api_client_project / "pyproject.toml").read_text()
         assert "pydantic-ai" not in pyproject
+        assert "datamodel-codegen" not in pyproject
         assert "tools" not in tomllib.loads(pyproject)["dependency-groups"]
+        hooks = (generated_api_client_project / ".pre-commit-config.yaml").read_text()
+        assert "datamodel-codegen" not in hooks
         assert "openapi.yaml" not in (generated_api_client_project / "AGENTS.md").read_text()
         assert "OPENROUTER" not in (generated_api_client_project / ".env.example").read_text()
 
@@ -1188,6 +1241,8 @@ class TestSpecFirstApiClient:
         assert "`openapi.yaml`" in agents_md
         assert "`.claude/skills/init-sdk/SKILL.md`" in agents_md
         assert "`uv run python -m tools.openapi_agents`" in agents_md
+        assert "`uv run datamodel-codegen`" in agents_md
+        assert "`my_awesome_project/models.py`" in agents_md
         assert "{{" not in agents_md, "Unrendered template variable found"
 
     def test_skill_names_the_generated_package(self, generated_spec_first_project: Path) -> None:
@@ -1197,6 +1252,7 @@ class TestSpecFirstApiClient:
         assert skill.startswith("---\nname: init-sdk\n")
         assert "`my_awesome_project/settings.py`" in skill
         assert "`tools/openapi_agents/project.py`" in skill
+        assert "`my_awesome_project/models.py`" in skill
         assert "{{" not in skill, "Unrendered template variable found"
 
     def test_env_example_names_the_key_of_the_agents(
@@ -1221,6 +1277,7 @@ class TestSpecFirstApiClient:
 
         assert readme.count("uv run python -m tools.openapi_agents") == 2
         assert readme.count("`OPENROUTER_API_KEY`") == 2
+        assert readme.count("uv run datamodel-codegen\n") == 2
 
     def test_project_module_is_kept_on_a_later_generation(self, tmp_path: Path) -> None:
         """The init skill rewrites `project.py` for one API, and an update must not undo that.
@@ -1328,6 +1385,88 @@ class TestSpecFirstApiClient:
 
         assert result.returncode == 0, f"Hooks failed:\n{result.stdout}\n{result.stderr}"
         assert "bandit" in result.stdout
+
+    @pytest.mark.parametrize("python_version", ["3.13", "3.14"])
+    def test_models_are_generated_from_the_openapi_document(
+        self, tmp_path: Path, python_version: str
+    ) -> None:
+        """`openapi.yaml` stays canonical only if nobody writes a model by hand.
+
+        The generator targets the Python of the project, and its output is
+        committed, so it has to pass the project's linter, formatter and type
+        checker as it comes out, on each version the template supports.
+        """
+        project_dir = _generate_project(
+            tmp_path / f"models-py{python_version.replace('.', '')}",
+            {"project_type": "api-client", "spec_first": True, "python_version": python_version},
+        )
+        subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
+        (project_dir / "openapi.yaml").write_text(OPENAPI_DOCUMENT)
+
+        generation = subprocess.run(
+            ["uv", "run", "datamodel-codegen"], capture_output=True, text=True, cwd=project_dir
+        )
+
+        assert generation.returncode == 0, f"Generation failed: {generation.stderr}"
+        models = (project_dir / "my_awesome_project/models.py").read_text()
+        assert "class Forecast(BaseModel):" in models
+        assert "class Sky(StrEnum):" in models
+        # An API adds response fields without notice, and a model must not reject them.
+        assert 'extra="ignore"' in models
+        assert "as a Unix timestamp in seconds" in models
+        for command in (
+            ["ruff", "check", "."],
+            ["ruff", "format", "--check", "."],
+            ["pyright"],
+            ["datamodel-codegen", "--check"],
+        ):
+            result = subprocess.run(
+                ["uv", "run", *command], capture_output=True, text=True, cwd=project_dir
+            )
+            assert result.returncode == 0, f"{command} failed: {result.stdout}\n{result.stderr}"
+
+    def test_hook_rejects_models_that_no_longer_match_the_document(self, tmp_path: Path) -> None:
+        """A document changed without its models leaves the client describing another API.
+
+        The hook is skipped while the project has no `openapi.yaml`, which the
+        hooks test above covers. Here the document exists: the hooks must
+        leave fresh models as the generator wrote them, and fail once the
+        document moves on without them.
+        """
+        if not which("prek"):
+            pytest.skip("prek not installed")
+        project_dir = _generate_project(
+            tmp_path / "models-hook", {"project_type": "api-client", "spec_first": True}
+        )
+        subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
+        (project_dir / "openapi.yaml").write_text(OPENAPI_DOCUMENT)
+        subprocess.run(
+            ["uv", "run", "datamodel-codegen"], cwd=project_dir, check=True, capture_output=True
+        )
+        # prek needs a git repo to find files via --all-files
+        subprocess.run(["git", "init", "-q"], cwd=project_dir, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+        subprocess.run(["prek", "run", "--all-files"], cwd=project_dir, capture_output=True)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+
+        matching = subprocess.run(
+            ["prek", "run", "--all-files"], capture_output=True, text=True, cwd=project_dir
+        )
+        (project_dir / "openapi.yaml").write_text(OPENAPI_DOCUMENT.replace("high:", "highest:"))
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+        outdated = subprocess.run(
+            ["prek", "run", "models-match-openapi", "--all-files"],
+            capture_output=True,
+            text=True,
+            cwd=project_dir,
+        )
+
+        assert matching.returncode == 0, f"Hooks failed:\n{matching.stdout}\n{matching.stderr}"
+        [hook_line] = [
+            line for line in matching.stdout.splitlines() if "models match openapi.yaml" in line
+        ]
+        assert hook_line.endswith("Passed"), f"Hook did not run: {hook_line}"
+        assert outdated.returncode != 0, "Hook accepted models that the document no longer matches"
 
 
 class TestDependencyUpdates:

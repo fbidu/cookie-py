@@ -62,6 +62,18 @@ repos:
 {%- if project_type != "docs" %}|{{ pkg_name }}/{% endif %})
         stages: [pre-commit]
         pass_filenames: false
+{%- if project_type == "api-client" and spec_first %}
+
+      # No file matches before the project has an `openapi.yaml`, so the hook
+      # is skipped until then.
+      - id: models-match-openapi
+        name: models match openapi.yaml
+        entry: uv run datamodel-codegen --check
+        language: system
+        files: ^(openapi\.yaml|{{ pkg_name }}/models\.py)$
+        stages: [pre-commit]
+        pass_filenames: false
+{%- endif %}
 {%- if project_type != "docs" %}
 
       - id: pytest

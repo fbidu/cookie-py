@@ -47,7 +47,7 @@ _Itens marcados estão implementados!_
 * [x] Site de documentação MkDocs em todo projeto, com publicação opcional no Forgejo
 * [x] Tipo de projeto só de documentação, sem pacote Python
 * [x] Tipo de projeto cliente de API, com cliente httpx2, erros próprios e configurações via pydantic-settings
-* [x] Opção spec-first para clientes de API: agentes que escrevem o `openapi.yaml` a partir da documentação da API, e uma skill que os configura
+* [x] Opção spec-first para clientes de API: agentes que escrevem o `openapi.yaml` a partir da documentação da API, uma skill que os configura e modelos pydantic gerados do documento
 * [x] Atualização de projetos existentes com `copier update`
 
 ### Hooks Habilitados
@@ -99,7 +99,7 @@ _Checked items are implemented_
 * [x] MkDocs documentation site in every project, with optional publishing on Forgejo
 * [x] Docs-only project type, with no Python package
 * [x] API client project type, with an httpx2 client, its own errors and pydantic-settings
-* [x] Spec-first option for API clients: agents that write `openapi.yaml` from the API's documentation, and a skill that sets them up
+* [x] Spec-first option for API clients: agents that write `openapi.yaml` from the API's documentation, a skill that sets them up and pydantic models generated from the document
 * [x] Update existing projects with `copier update`
 
 ### Hooks

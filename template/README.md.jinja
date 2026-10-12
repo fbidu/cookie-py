@@ -80,6 +80,16 @@ uv run python -m tools.openapi_agents
 - When `openapi.yaml` exists, the run updates it and keeps its operationIds, tags and schema names, because the client takes its public names from them. To write the document from scratch, delete it first.
 - Progress is logged to stderr: each round, what the checker found and the tokens of each call. The run exits with status 1 when discrepancies remain after three rounds.
 - Review `openapi.yaml` before committing it.
+
+### Regenerating the models
+
+`{{ pkg_name }}/models.py` is generated from `openapi.yaml` and never edited by hand. After a change to `openapi.yaml`:
+
+```bash
+uv run datamodel-codegen
+```
+
+The options are in `[tool.datamodel-codegen]` of `pyproject.toml`. A hook fails the commit when the file no longer matches the document.
 {% endif %}
 {% if dependency_updates == "renovate" %}
 ### Dependency updates
@@ -190,6 +200,16 @@ uv run python -m tools.openapi_agents
 - Quando o `openapi.yaml` existe, a execução o atualiza e mantém seus operationIds, tags e nomes de schemas, porque o cliente tira deles seus nomes públicos. Para escrever o documento do zero, apague o arquivo antes.
 - O progresso é registrado em stderr: cada rodada, o que o verificador encontrou e os tokens de cada chamada. A execução termina com status 1 quando restam discrepâncias depois de três rodadas.
 - Revise o `openapi.yaml` antes de fazer o commit.
+
+### Regenerando os modelos
+
+O `{{ pkg_name }}/models.py` é gerado a partir do `openapi.yaml` e nunca é editado à mão. Depois de uma mudança no `openapi.yaml`:
+
+```bash
+uv run datamodel-codegen
+```
+
+As opções ficam em `[tool.datamodel-codegen]` do `pyproject.toml`. Um hook faz o commit falhar quando o arquivo não corresponde mais ao documento.
 {% endif %}
 {% if dependency_updates == "renovate" %}
 ### Atualização de dependências
