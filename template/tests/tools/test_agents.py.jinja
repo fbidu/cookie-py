@@ -1,0 +1,63 @@
+import json
+from pathlib import Path
+
+import httpx2
+from pydantic_ai.models.openrouter import OpenRouterModel
+from pydantic_ai.providers.openrouter import OpenRouterProvider
+
+from tools.openapi_agents.agents import build_specer
+from tools.openapi_agents.settings import Settings
+from tools.openapi_agents.upstream import Checkout, read_upstream_file, search_upstream
+
+
+def test_specer_marks_its_prompt_for_caching(tmp_path: Path) -> None:
+    """Every tool call resends the sources and all that was read before it, and
+    every round resends them again. Without a cache marker each of those is
+    billed at the full rate; the marker makes the repeated part cheap."""
+    # Setup
+    sent: list[httpx2.Request] = []
+    document = 'openapi: 3.1.0\ninfo:\n  title: Example\n  version: "1"\npaths: {}\n'
+
+    def openrouter(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        reply = {
+            "id": "gen-1",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "anthropic/claude-opus-5.5",
+            "provider": "Anthropic",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": document},
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+        return httpx2.Response(200, json=reply)
+
+    settings = Settings(openrouter_api_key="test-key", _env_file=None)  # pyright: ignore[reportArgumentType, reportCallIssue]
+    http_client = httpx2.AsyncClient(transport=httpx2.MockTransport(openrouter))
+    model = OpenRouterModel(
+        settings.openapi_agents_model,
+        provider=OpenRouterProvider(
+            api_key=settings.openrouter_api_key.get_secret_value(), http_client=http_client
+        ),
+    )
+    specer = build_specer(
+        model,
+        "SPECER_INSTRUCTIONS",
+        deps_type=Checkout,
+        tools=[read_upstream_file, search_upstream],
+    )
+
+    # Act
+    specer.run_sync("SOURCES_MARKER", deps=Checkout(tmp_path, "*.py"))
+
+    # Assert
+    body = json.loads(sent[0].content)
+    sources = body["messages"][-1]["content"][-1]
+    assert sources["text"] == "SOURCES_MARKER"
+    assert sources["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
+    assert body["tools"][-1]["cache_control"] == {"type": "ephemeral", "ttl": "5m"}

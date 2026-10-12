@@ -59,17 +59,31 @@ dev = [
     "pytest>=8.0.0",
     "ruff>=0.8.0",
     { include-group = "docs" },
+{%- if project_type == "api-client" and spec_first %}
+    { include-group = "tools" },
+{%- endif %}
 ]
 docs = [
     "mkdocs-material>=9.7.0",
     "mkdocs<2", # MkDocs 2.0 is a breaking rewrite with no migration path
     "mkdocstrings[python]>=1.0.0",
 ]
+{%- if project_type == "api-client" and spec_first %}
+# The agents in `tools/openapi_agents`, which write `openapi.yaml`.
+tools = [
+    "openapi-spec-validator>=0.9.0",
+    "pydantic-ai-slim[openrouter]>=2.54.0",
+    "pyyaml>=6.0.3",
+]
+{%- endif %}
 
 [tool.pytest.ini_options]
 addopts = """
     -ra -vv
     --cov={{ pkg_name }}
+{%- if project_type == "api-client" and spec_first %}
+    --cov=tools
+{%- endif %}
     --cov-report term-missing:skip-covered
     --doctest-modules
     -n auto
@@ -107,6 +121,13 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["PLR2004", "S101", "TID252"]
+{%- if project_type == "api-client" and spec_first %}
+# pydantic-ai reads the annotations of the agents' tools at runtime, and the
+# agents run unchanged on every Python the template supports, so the imports
+# their annotations use stay at module level.
+"tools/**/*" = ["TC001", "TC002", "TC003"]
+"tests/tools/**/*" = ["TC001", "TC002", "TC003"]
+{%- endif %}
 {%- if project_type == "api-client" %}
 
 [tool.ruff.lint.flake8-type-checking]
@@ -122,7 +143,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.pyright]
-include = ["{{ pkg_name }}", "tests"]
+include = ["{{ pkg_name }}", "tests"{% if project_type == "api-client" and spec_first %}, "tools"{% endif %}]
 exclude = ["**/__pycache__"]
 venvPath = "."
 venv = ".venv"

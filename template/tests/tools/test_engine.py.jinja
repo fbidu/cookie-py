@@ -1,0 +1,135 @@
+"""The engine on its own: nothing here comes from `project` or `upstream`."""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    TextPart,
+    ToolCallPart,
+    UserPromptPart,
+)
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+from tools.openapi_agents.agents import build_checker, build_specer
+from tools.openapi_agents.pipeline import produce
+
+REPO_ROOT = Path(__file__).parents[2]
+
+ENGINE_MODULES = [
+    "tools.openapi_agents.agents",
+    "tools.openapi_agents.pipeline",
+    "tools.openapi_agents.settings",
+    "tools.openapi_agents.validation",
+]
+
+
+def _last_request_text(messages: list[ModelMessage]) -> str:
+    request = messages[-1]
+    assert isinstance(request, ModelRequest)
+    return "\n".join(
+        str(part.content)
+        for part in request.parts
+        if isinstance(part, UserPromptPart | RetryPromptPart)
+    )
+
+
+def test_full_cycle_runs_on_one_document_without_code_or_tools() -> None:
+    """Most APIs are closed-source: their only source is a published document,
+    with no repository to check out and nothing for a tool to read. The engine
+    grew around an API whose code is public, so this takes a project that has
+    none through every step: the write, a validation error, a discrepancy and
+    a clean check."""
+    # Setup
+    api_doc = "WEATHER_DOC_MARKER: `GET /forecast` returns the forecast of a city."
+    valid_document = """\
+openapi: 3.1.0
+info:
+  title: Weather
+  version: "1"
+paths:
+  /forecast:
+    get:
+      operationId: getForecast
+      responses:
+        "200":
+          description: The forecast of a city.
+"""
+    out_of_scope_document = valid_document.replace("/forecast", "/internal/forecast")
+    corrected_document = valid_document.replace('"200"', '"201"')
+    drafts = [out_of_scope_document, valid_document, corrected_document]
+    discrepancy = {"operation": "GET /forecast", "detail": "The server returns 201, not 200."}
+    specer_requests: list[str] = []
+    checker_requests: list[str] = []
+    offered_tools: list[str] = []
+
+    def path_rule(path: str) -> str | None:
+        return "is internal" if path.startswith("/internal/") else None
+
+    def specer(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        specer_requests.append(_last_request_text(messages))
+        offered_tools.extend(tool.name for tool in info.function_tools)
+        return ModelResponse(parts=[TextPart(drafts[len(specer_requests) - 1])])
+
+    def checker(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        checker_requests.append(_last_request_text(messages))
+        offered_tools.extend(tool.name for tool in info.function_tools)
+        found = [discrepancy] if len(checker_requests) == 1 else []
+        return ModelResponse(
+            parts=[ToolCallPart(info.output_tools[0].name, {"discrepancies": found})]
+        )
+
+    # Act
+    result = produce(
+        build_specer(FunctionModel(specer), "SPECER_INSTRUCTIONS", path_rule=path_rule),
+        build_checker(FunctionModel(checker), "CHECKER_INSTRUCTIONS"),
+        api_doc,
+        None,
+    )
+
+    # Assert
+    assert offered_tools == []
+    assert "WEATHER_DOC_MARKER" in specer_requests[0]
+    assert "paths: /internal/forecast is internal" in specer_requests[1]
+    assert "WEATHER_DOC_MARKER" in checker_requests[0]
+    assert valid_document in checker_requests[0]
+    assert "The server returns 201, not 200." in specer_requests[2]
+    assert corrected_document in checker_requests[1]
+    assert result.document == corrected_document
+    assert result.remaining == []
+
+
+def test_engine_imports_neither_the_project_nor_the_checkout() -> None:
+    """The engine comes from the project template and receives its updates,
+    while `project.py` belongs to this repository. An engine module that
+    imported the project, or the checkout that a closed-source API does not
+    have, would tie them together, and no other test would notice, because
+    every one of them loads the whole package."""
+    # Setup
+    script = (
+        "import importlib, json, sys\n"
+        "def loaded():\n"
+        "    return sorted(name for name in sys.modules if name.startswith('tools.'))\n"
+        f"for name in {ENGINE_MODULES!r}:\n"
+        "    importlib.import_module(name)\n"
+        "engine = loaded()\n"
+        "importlib.import_module('tools.openapi_agents.upstream')\n"
+        "print(json.dumps({'engine': engine, 'with_checkout': loaded()}))\n"
+    )
+
+    # Act
+    # A new interpreter, because this one has already imported every module.
+    completed = subprocess.run(
+        [sys.executable, "-c", script], cwd=REPO_ROOT, check=True, capture_output=True, text=True
+    )
+
+    # Assert
+    loaded = json.loads(completed.stdout)
+    package = "tools.openapi_agents"
+    assert loaded["engine"] == [package, *ENGINE_MODULES]
+    assert loaded["with_checkout"] == sorted([package, *ENGINE_MODULES, f"{package}.upstream"])

@@ -1,0 +1,18 @@
+"""Settings of the agents, read from the environment and a `.env` file."""
+
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Each field is read from the variable of the same name, in upper case.
+
+    `.env` is looked up in the working directory, which is the repository root
+    for a run. A variable set in the environment overrides the file.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    openrouter_api_key: SecretStr
+    # An OpenRouter model id, as listed at https://openrouter.ai/models.
+    openapi_agents_model: str = "anthropic/claude-opus-5.5"

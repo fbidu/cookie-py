@@ -1,0 +1,216 @@
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+from tools.openapi_agents.agents import build_specer
+from tools.openapi_agents.upstream import (
+    Checkout,
+    UpstreamError,
+    ensure_checkout,
+    read_upstream_file,
+    search_upstream,
+)
+
+
+def _git(repo: Path, *args: str) -> str:
+    command = ["git", "-c", "user.name=test", "-c", "user.email=test@example.com", *args]
+    # The pre-push hook runs these tests with GIT_DIR set to this repository.
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    result = subprocess.run(command, cwd=repo, env=env, check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
+
+def _commit_file(repo: Path, name: str, content: str) -> str:
+    target = repo / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "--quiet", "-m", f"add {name}")
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def test_ensure_checkout_clones_at_the_pinned_commit(tmp_path: Path) -> None:
+    """The agents must read the code that matches the vendored doc, not
+    whatever upstream's default branch holds today."""
+    # Setup
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(origin, "init", "--quiet")
+    pinned = _commit_file(origin, "app/api/views/alias.py", "PINNED = True\n")
+    latest = _commit_file(origin, "app/api/views/alias.py", "PINNED = False\n")
+    assert pinned != latest  # sanity check: origin has moved past the pin
+
+    # Act
+    checkout = ensure_checkout(tmp_path / "checkout", pinned, url=str(origin), source_glob="*.py")
+
+    # Assert
+    assert checkout.read("app/api/views/alias.py") == "PINNED = True\n"
+
+
+def test_ensure_checkout_moves_an_existing_checkout_to_a_new_pin(tmp_path: Path) -> None:
+    """After an upstream change the pinned commit moves forward. A checkout
+    left over from the previous run must not be read at the old commit."""
+    # Setup
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(origin, "init", "--quiet")
+    old_pin = _commit_file(origin, "app/api/views/alias.py", "VERSION = 1\n")
+    ensure_checkout(tmp_path / "checkout", old_pin, url=str(origin), source_glob="*.py")
+    new_pin = _commit_file(origin, "app/api/views/alias.py", "VERSION = 2\n")
+
+    # Act
+    checkout = ensure_checkout(tmp_path / "checkout", new_pin, url=str(origin), source_glob="*.py")
+
+    # Assert
+    assert checkout.read("app/api/views/alias.py") == "VERSION = 2\n"
+
+
+def test_ensure_checkout_ignores_the_git_environment_of_a_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A git hook exports GIT_DIR for the repository that fired it. Inherited
+    by the clone, it redirects every command to that repository, which is how
+    the pre-push hook once failed these tests."""
+    # Setup
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(origin, "init", "--quiet")
+    pinned = _commit_file(origin, "app/api/views/alias.py", "PINNED = True\n")
+    hook_repo = tmp_path / "hook_repo"
+    hook_repo.mkdir()
+    _git(hook_repo, "init", "--quiet")
+    monkeypatch.setenv("GIT_DIR", str(hook_repo / ".git"))
+
+    # Act
+    checkout = ensure_checkout(tmp_path / "checkout", pinned, url=str(origin), source_glob="*.py")
+
+    # Assert
+    assert checkout.read("app/api/views/alias.py") == "PINNED = True\n"
+    assert not (hook_repo / "app").exists()
+
+
+def test_read_returns_the_requested_line_window(tmp_path: Path) -> None:
+    """Some upstream modules run to thousands of lines; the agent reads them in
+    windows instead of loading the whole file into its context."""
+    # Setup
+    (tmp_path / "models.py").write_text("".join(f"line {n}\n" for n in range(1, 11)))
+
+    # Act
+    window = Checkout(tmp_path, "*.py").read("models.py", start_line=4, max_lines=2)
+
+    # Assert
+    assert window == "line 4\nline 5\n"
+
+
+def test_read_refuses_paths_outside_the_checkout(tmp_path: Path) -> None:
+    """The path comes from a language model. It must not be able to read the
+    maintainer's files, such as the API key in a local `.env`."""
+    # Setup
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+    (tmp_path / "secret.txt").write_text("api-key")
+
+    # Act / Assert
+    with pytest.raises(UpstreamError, match="outside the checkout"):
+        Checkout(checkout_dir, "*.py").read("../secret.txt")
+
+
+def test_read_reports_a_missing_file(tmp_path: Path) -> None:
+    """A model that guesses a wrong path needs an error it can act on rather
+    than a traceback that aborts the run."""
+    with pytest.raises(UpstreamError, match="no such file"):
+        Checkout(tmp_path, "*.py").read("app/missing.py")
+
+
+def test_search_returns_file_and_line_of_each_match(tmp_path: Path) -> None:
+    """Handlers import enums and helpers from across the repository; search is
+    how the agent finds where a name is defined."""
+    # Setup
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "models.py").write_text(
+        "import enum\n\nclass AliasGeneratorEnum(enum.Enum):\n"
+    )
+    (tmp_path / "app" / "other.py").write_text("unrelated = 1\n")
+
+    # Act
+    matches = Checkout(tmp_path, "*.py").search(r"class AliasGeneratorEnum")
+
+    # Assert
+    assert matches == "app/models.py:3: class AliasGeneratorEnum(enum.Enum):"
+
+
+def test_search_reads_the_files_the_project_names(tmp_path: Path) -> None:
+    """A server is written in whatever language its vendor chose. The project
+    says which files are its code, and a match in any other file would send
+    the agent to a build artefact or a vendored dependency."""
+    # Setup
+    (tmp_path / "handlers.go").write_text("func ListAliases() {}\n")
+    (tmp_path / "handlers.py").write_text("def ListAliases(): ...\n")
+
+    # Act
+    matches = Checkout(tmp_path, "*.go").search(r"ListAliases")
+
+    # Assert
+    assert matches == "handlers.go:1: func ListAliases() {}"
+
+
+def test_api_code_concatenates_every_api_module(tmp_path: Path) -> None:
+    """The API package is small enough to hand to the agent whole, which spares
+    it one tool call per handler module."""
+    # Setup
+    views = tmp_path / "app" / "api" / "views"
+    views.mkdir(parents=True)
+    (tmp_path / "app" / "api" / "base.py").write_text("BASE = 1\n")
+    (views / "alias.py").write_text("ALIAS = 1\n")
+    (tmp_path / "app" / "models.py").write_text("OUTSIDE = 1\n")
+
+    # Act
+    code = Checkout(tmp_path, "*.py").api_code("app/api")
+
+    # Assert
+    assert code == "# app/api/base.py\nBASE = 1\n\n# app/api/views/alias.py\nALIAS = 1\n"
+
+
+def test_an_agent_reads_upstream_files_through_its_tool(tmp_path: Path) -> None:
+    """Handlers depend on models and helpers that the prompt does not carry;
+    without the read tool an agent would guess at them."""
+    # Setup
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "models.py").write_text("MODELS_MARKER = 1\n")
+    document = 'openapi: 3.1.0\ninfo:\n  title: Example\n  version: "1"\npaths: {}\n'
+    tool_results: list[str] = []
+
+    def specer(messages: list[ModelMessage], _: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            call = ToolCallPart("read_upstream_file", {"path": "app/models.py"})
+            return ModelResponse(parts=[call])
+        request = messages[-1]
+        assert isinstance(request, ModelRequest)
+        tool_results.extend(
+            str(part.content) for part in request.parts if isinstance(part, ToolReturnPart)
+        )
+        return ModelResponse(parts=[TextPart(document)])
+
+    agent = build_specer(
+        FunctionModel(specer),
+        "SPECER_INSTRUCTIONS",
+        deps_type=Checkout,
+        tools=[read_upstream_file, search_upstream],
+    )
+
+    # Act
+    agent.run_sync("SOURCES_MARKER", deps=Checkout(tmp_path, "*.py"))
+
+    # Assert
+    assert tool_results == ["MODELS_MARKER = 1\n"]

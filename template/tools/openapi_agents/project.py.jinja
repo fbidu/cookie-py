@@ -1,0 +1,105 @@
+"""Everything the agents know about the API that this client wraps.
+
+The other modules of this package work for any HTTP API and import nothing
+from this one. The entry point passes what is defined here to them.
+
+Each value marked as a placeholder is replaced when the project is
+initialised: see `.claude/skills/init-sdk/SKILL.md`.
+"""
+
+from pathlib import Path
+
+from pydantic_ai import Agent
+from pydantic_ai.models import Model
+
+from tools.openapi_agents import agents
+from tools.openapi_agents.agents import CheckerReport
+
+# Placeholder: the name its vendor gives the API.
+API_NAME = "Example"
+# Placeholder: the base URL of the API, as `DEFAULT_BASE_URL` in the package.
+SERVER_URL = "https://api.example.com"
+# Placeholder: how a request authenticates, as `Client` does it.
+AUTHENTICATION = "a bearer token sent in the `Authorization` header"
+
+# Paths relative to the repository root.
+SOURCES_DIR = "upstream"
+DOCUMENT_PATH = "openapi.yaml"
+
+# Placeholder: name each source, say which one decides when two of them
+# disagree, and say which endpoints are out of scope.
+_SOURCES_AND_SCOPE = """\
+The sources are the documents of the API that this repository vendors, and \
+the prompt carries all of them. They are the published description of the \
+API; there is no server code to read.
+
+Scope: the document covers every endpoint the sources describe.
+"""
+
+SPECER_INSTRUCTIONS = f"""\
+You write the OpenAPI 3.1 document for the {API_NAME} HTTP API. A Python SDK \
+is generated from this document and nothing else, so each path, parameter, \
+request body, response body and status code has to match what the server does.
+
+{_SOURCES_AND_SCOPE}
+Conventions the SDK generation relies on:
+
+- The only server is {SERVER_URL}.
+- Authentication is {AUTHENTICATION}.
+- Each operation has a unique camelCase operationId and exactly one tag naming \
+its resource.
+- Request and response bodies are named schemas under components/schemas, \
+shared by reference wherever the server returns the same shape.
+- A field is required only if the sources show that it is always present, and \
+nullable only if they show that it can be null.
+- Error responses the sources describe are documented, with their body schema.
+- A property or parameter has a `description` when its name does not tell a \
+caller everything needed to use it: a unit or a format (a timestamp in \
+seconds, the layout of a date string), the allowed values and what each one \
+does, the effect of sending null or leaving it out, a default, a limit, or \
+where its value comes from. These descriptions become the field documentation \
+of the SDK models, which is what a caller reads in an editor. Use the wording \
+of the sources where they have one. A property whose name already says it \
+all, such as `id`, `email` or `enabled`, has no description.
+
+Reply with the YAML document only, without commentary or a code fence.
+"""
+
+CHECKER_INSTRUCTIONS = f"""\
+You verify an OpenAPI 3.1 document for the {API_NAME} HTTP API. A Python SDK \
+is generated from the document, so an error in it becomes a bug in the SDK.
+
+{_SOURCES_AND_SCOPE}
+Compare every operation of the document with the sources: path, method, \
+parameters, request body, response bodies and status codes. Check also that \
+no endpoint in scope is missing and none out of scope is present.
+
+Report as discrepancies the places where the document is wrong, because it \
+contradicts the sources, omits something they state, or states something \
+they do not. Say what the document states and what it should state, \
+precisely enough for the author to correct it without repeating your research.
+
+Report only what you confirmed in the sources. An empty discrepancies list is \
+the right answer for a correct document; matters of style are not discrepancies.
+"""
+
+
+def read_sources(repo_root: Path) -> str:
+    """Return every vendored source under its path, as both agents read them.
+
+    The result is empty for a project that vendors no source yet.
+    """
+    directory = repo_root / SOURCES_DIR
+    files = sorted(path for path in directory.rglob("*") if path.is_file())
+    return "\n\n".join(
+        f'<source path="{file.relative_to(directory)}">\n{file.read_text()}\n</source>'
+        for file in files
+    )
+
+
+def build_specer(model: Model | str, current: str | None = None) -> Agent[None, str]:
+    return agents.build_specer(model, SPECER_INSTRUCTIONS, current=current)
+
+
+def build_checker(model: Model | str) -> Agent[None, CheckerReport]:
+    return agents.build_checker(model, CHECKER_INSTRUCTIONS)

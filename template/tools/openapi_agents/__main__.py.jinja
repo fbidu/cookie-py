@@ -1,0 +1,61 @@
+"""Produce `openapi.yaml` with specer and specer-checker.
+
+Run from the repository root with `uv run python -m tools.openapi_agents`. The
+OpenRouter key and the model come from `tools.openapi_agents.settings`. What
+the agents read and what they are told come from `tools.openapi_agents.project`.
+An `openapi.yaml` that already exists is updated; without one, the document is
+written from scratch.
+"""
+
+import logging
+import sys
+from pathlib import Path
+
+from pydantic_ai.models.openrouter import OpenRouterModel
+from pydantic_ai.providers.openrouter import OpenRouterProvider
+
+from tools.openapi_agents import project
+from tools.openapi_agents.pipeline import produce
+from tools.openapi_agents.settings import Settings
+
+
+def main() -> int:
+    logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    logging.getLogger("tools.openapi_agents").setLevel(logging.INFO)
+    repo_root = Path.cwd()
+    sources = project.read_sources(repo_root)
+    if not sources:
+        print(
+            f"No sources in {project.SOURCES_DIR}/. Initialise the project first: "
+            "see .claude/skills/init-sdk/SKILL.md.",
+            file=sys.stderr,
+        )
+        return 2
+    settings = Settings()  # pyright: ignore[reportCallIssue]
+    model = OpenRouterModel(
+        settings.openapi_agents_model,
+        provider=OpenRouterProvider(api_key=settings.openrouter_api_key.get_secret_value()),
+    )
+    document = repo_root / project.DOCUMENT_PATH
+    current = document.read_text() if document.exists() else None
+
+    result = produce(
+        project.build_specer(model, current),
+        project.build_checker(model),
+        sources,
+        None,
+        current,
+    )
+    document.write_text(result.document)
+
+    print(f"Wrote {project.DOCUMENT_PATH} with {model.model_name}.")
+    if result.remaining:
+        print(f"{len(result.remaining)} discrepancies remain after the last round:")
+        for item in result.remaining:
+            print(f"- {item.operation}: {item.detail}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -66,6 +66,21 @@ Every push to `main` that touches the docs publishes the site to <https://docs.e
 
 The workflow needs a `DOCS_PUBLISH_KEY_B64` Actions secret on the repo's **owner** (account or org), not on the repo. An owner that already publishes docs has one. For a new org, follow [Publishing docs](https://docs.example.com/ansible/publishing-docs/).
 {% endif %}
+{% if project_type == "api-client" and spec_first %}
+### Producing the OpenAPI document
+
+This client is spec-first: `openapi.yaml` describes the API, and the client is derived from it. Two agents in `tools/openapi_agents` write that file from the sources vendored in `upstream/`:
+
+```bash
+uv run python -m tools.openapi_agents
+```
+
+- A new project has no sources yet. The `init-sdk` skill in `.claude/skills/` collects them and fills the placeholders of `tools/openapi_agents/project.py`.
+- The agents reach their model through [OpenRouter](https://openrouter.ai), so a run costs money. Copy `.env.example` to `.env` and set `OPENROUTER_API_KEY`. `OPENAPI_AGENTS_MODEL` is optional.
+- When `openapi.yaml` exists, the run updates it and keeps its operationIds, tags and schema names, because the client takes its public names from them. To write the document from scratch, delete it first.
+- Progress is logged to stderr: each round, what the checker found and the tokens of each call. The run exits with status 1 when discrepancies remain after three rounds.
+- Review `openapi.yaml` before committing it.
+{% endif %}
 {% if dependency_updates == "renovate" %}
 ### Dependency updates
 
@@ -160,6 +175,21 @@ A documentação é um site MkDocs: páginas em `docs/`, configuração em `mkdo
 Todo push para a `main` que altera a documentação publica o site em <https://docs.example.com/{{ docs_tenant }}/> (apenas na LAN do homelab), pelo `.forgejo/workflows/docs.yml`.
 
 O workflow precisa de um Actions secret `DOCS_PUBLISH_KEY_B64` no **dono** do repositório (conta ou organização), não no repositório. Um dono que já publica documentação já tem um. Para uma organização nova, siga [Publishing docs](https://docs.example.com/ansible/publishing-docs/).
+{% endif %}
+{% if project_type == "api-client" and spec_first %}
+### Produzindo o documento OpenAPI
+
+Este cliente é spec-first: o `openapi.yaml` descreve a API, e o cliente é derivado dele. Dois agentes em `tools/openapi_agents` escrevem esse arquivo a partir das fontes guardadas em `upstream/`:
+
+```bash
+uv run python -m tools.openapi_agents
+```
+
+- Um projeto novo ainda não tem fontes. A skill `init-sdk` em `.claude/skills/` reúne as fontes e preenche os placeholders de `tools/openapi_agents/project.py`.
+- Os agentes acessam o modelo pelo [OpenRouter](https://openrouter.ai), então uma execução custa dinheiro. Copie `.env.example` para `.env` e defina `OPENROUTER_API_KEY`. `OPENAPI_AGENTS_MODEL` é opcional.
+- Quando o `openapi.yaml` existe, a execução o atualiza e mantém seus operationIds, tags e nomes de schemas, porque o cliente tira deles seus nomes públicos. Para escrever o documento do zero, apague o arquivo antes.
+- O progresso é registrado em stderr: cada rodada, o que o verificador encontrou e os tokens de cada chamada. A execução termina com status 1 quando restam discrepâncias depois de três rodadas.
+- Revise o `openapi.yaml` antes de fazer o commit.
 {% endif %}
 {% if dependency_updates == "renovate" %}
 ### Atualização de dependências

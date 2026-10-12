@@ -1,0 +1,251 @@
+import logging
+
+import pytest
+from pydantic_ai import Agent
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    TextPart,
+    ToolCallPart,
+    UserPromptPart,
+)
+from pydantic_ai.models.function import AgentInfo, FunctionDef, FunctionModel
+from pydantic_ai.usage import RequestUsage
+
+from tools.openapi_agents.agents import CheckerReport, Discrepancy, build_checker, build_specer
+from tools.openapi_agents.pipeline import MAX_ROUNDS, produce
+
+VALID_DOCUMENT = """\
+openapi: 3.1.0
+info:
+  title: Example
+  version: "1"
+paths:
+  /api/v2/aliases:
+    get:
+      operationId: listAliases
+      responses:
+        "200":
+          description: The aliases of the account.
+"""
+
+CORRECTED_DOCUMENT = VALID_DOCUMENT.replace('"200"', '"201"')
+
+DISCREPANCY = {"operation": "GET /api/v2/aliases", "detail": "The server returns 201, not 200."}
+
+SOURCES = "SOURCES_MARKER"
+
+
+def _last_request_text(messages: list[ModelMessage]) -> str:
+    request = messages[-1]
+    assert isinstance(request, ModelRequest)
+    return "\n".join(
+        str(part.content)
+        for part in request.parts
+        if isinstance(part, UserPromptPart | RetryPromptPart)
+    )
+
+
+def _report(info: AgentInfo, discrepancies: list[dict[str, str]]) -> ModelResponse:
+    arguments = {"discrepancies": discrepancies}
+    return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, arguments)])
+
+
+def _specer(function: FunctionDef, current: str | None = None) -> Agent[None, str]:
+    return build_specer(FunctionModel(function), "SPECER_INSTRUCTIONS", current=current)
+
+
+def _checker(function: FunctionDef) -> Agent[None, CheckerReport]:
+    return build_checker(FunctionModel(function), "CHECKER_INSTRUCTIONS")
+
+
+def test_validation_errors_are_returned_to_specer() -> None:
+    """A document the validator rejects goes back to specer with the errors,
+    and only a valid document reaches the checker, whose time costs more."""
+    # Setup
+    specer_requests: list[str] = []
+    checked_documents: list[str] = []
+    invalid_document = VALID_DOCUMENT.replace('  version: "1"\n', "")
+
+    def specer(messages: list[ModelMessage], _: AgentInfo) -> ModelResponse:
+        specer_requests.append(_last_request_text(messages))
+        reply = invalid_document if len(specer_requests) == 1 else VALID_DOCUMENT
+        return ModelResponse(parts=[TextPart(reply)])
+
+    def checker(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        checked_documents.append(_last_request_text(messages))
+        return _report(info, [])
+
+    # Act
+    result = produce(_specer(specer), _checker(checker), SOURCES, None)
+
+    # Assert
+    assert "info: 'version' is a required property" in specer_requests[1]
+    assert result.document == VALID_DOCUMENT
+    assert len(checked_documents) == 1
+    assert invalid_document not in checked_documents[0]
+
+
+def test_discrepancies_are_returned_to_specer_until_none_remain() -> None:
+    """Each discrepancy the checker reports goes back to specer, and the cycle
+    ends as soon as a check comes back clean."""
+    # Setup
+    specer_requests: list[str] = []
+    checker_calls = 0
+
+    def specer(messages: list[ModelMessage], _: AgentInfo) -> ModelResponse:
+        specer_requests.append(_last_request_text(messages))
+        reply = VALID_DOCUMENT if len(specer_requests) == 1 else CORRECTED_DOCUMENT
+        return ModelResponse(parts=[TextPart(reply)])
+
+    def checker(_: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        nonlocal checker_calls
+        checker_calls += 1
+        return _report(info, [DISCREPANCY] if checker_calls == 1 else [])
+
+    # Act
+    result = produce(_specer(specer), _checker(checker), SOURCES, None)
+
+    # Assert
+    assert "The server returns 201, not 200." in specer_requests[1]
+    assert result.document == CORRECTED_DOCUMENT
+    assert result.remaining == []
+    assert checker_calls == 2
+
+
+def test_cycle_stops_after_three_rounds_and_reports_what_remains() -> None:
+    """Two models that never agree must not loop forever or spend without
+    bound; after three rounds the maintainer decides."""
+    # Setup
+    specer_calls = 0
+    checker_calls = 0
+
+    def specer(_: list[ModelMessage], __: AgentInfo) -> ModelResponse:
+        nonlocal specer_calls
+        specer_calls += 1
+        return ModelResponse(parts=[TextPart(VALID_DOCUMENT)])
+
+    def checker(_: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        nonlocal checker_calls
+        checker_calls += 1
+        return _report(info, [DISCREPANCY])
+
+    # Act
+    result = produce(_specer(specer), _checker(checker), SOURCES, None)
+
+    # Assert
+    assert MAX_ROUNDS == 3  # sanity check: the limit this test counts to
+    assert checker_calls == 3
+    assert specer_calls == 3
+    assert result.remaining == [Discrepancy(**DISCREPANCY)]
+
+
+def test_each_round_is_logged_with_what_the_checker_found(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A run takes many minutes and spends money the whole time. The maintainer
+    has to see which round it is in and what the checker objected to while it
+    runs, not after the last round."""
+    # Setup
+    checker_calls = 0
+
+    def specer(_: list[ModelMessage], __: AgentInfo) -> ModelResponse:
+        return ModelResponse(parts=[TextPart(VALID_DOCUMENT)])
+
+    def checker(_: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        nonlocal checker_calls
+        checker_calls += 1
+        return _report(info, [DISCREPANCY] if checker_calls == 1 else [])
+
+    # Act
+    with caplog.at_level(logging.INFO, logger="tools.openapi_agents"):
+        produce(_specer(specer), _checker(checker), SOURCES, None)
+
+    # Assert
+    log = caplog.text
+    assert "Round 1: specer is writing the document" in log
+    assert "Round 1: specer-checker found 1 discrepancies" in log
+    assert "GET /api/v2/aliases: The server returns 201, not 200." in log
+    assert "Round 2: specer is correcting the document" in log
+    assert "Round 2: specer-checker found 0 discrepancies" in log
+    assert log.index("Round 1: specer-checker found") < log.index("Round 2: specer is correcting")
+
+
+def test_token_usage_is_logged_after_each_agent_call(caplog: pytest.LogCaptureFixture) -> None:
+    """A run that misses the prompt cache bills every round at the full rate,
+    and nothing else shows it. The usage line shows, after the first call,
+    whether the cache is being hit."""
+
+    # Setup
+    def specer(_: list[ModelMessage], __: AgentInfo) -> ModelResponse:
+        usage = RequestUsage(input_tokens=1000, cache_read_tokens=900, output_tokens=50)
+        return ModelResponse(parts=[TextPart(VALID_DOCUMENT)], usage=usage)
+
+    def checker(_: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return _report(info, [])
+
+    # Act
+    with caplog.at_level(logging.INFO, logger="tools.openapi_agents"):
+        produce(_specer(specer), _checker(checker), SOURCES, None)
+
+    # Assert
+    usage_lines = [line for line in caplog.messages if line.startswith("specer finished")]
+    assert len(usage_lines) == 1
+    assert "1 requests" in usage_lines[0]
+    assert "1000 input tokens (900 read from cache" in usage_lines[0]
+    assert "50 output tokens" in usage_lines[0]
+
+
+def test_an_update_gives_specer_the_current_document() -> None:
+    """Specer can keep what the current document says only if the document is
+    in front of it. Without it every run starts over and chooses its names
+    again."""
+    # Setup
+    specer_requests: list[str] = []
+    current = VALID_DOCUMENT.replace("The aliases of the account.", "CURRENT_DOCUMENT_MARKER")
+
+    def specer(messages: list[ModelMessage], _: AgentInfo) -> ModelResponse:
+        specer_requests.append(_last_request_text(messages))
+        return ModelResponse(parts=[TextPart(current)])
+
+    def checker(_: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return _report(info, [])
+
+    # Act
+    produce(_specer(specer, current), _checker(checker), SOURCES, None, current)
+
+    # Assert
+    assert "CURRENT_DOCUMENT_MARKER" in specer_requests[0]
+    assert "SOURCES_MARKER" in specer_requests[0]
+
+
+def test_an_update_that_renames_an_operation_goes_back_to_specer() -> None:
+    """The prompt asks specer to keep the names, and a request to a model is
+    not a guarantee. The rename has to be caught before the checker, which
+    compares the document with the sources and so cannot see it."""
+    # Setup
+    specer_requests: list[str] = []
+    checked_documents: list[str] = []
+    renamed_document = VALID_DOCUMENT.replace("listAliases", "getAliases")
+
+    def specer(messages: list[ModelMessage], _: AgentInfo) -> ModelResponse:
+        specer_requests.append(_last_request_text(messages))
+        reply = renamed_document if len(specer_requests) == 1 else VALID_DOCUMENT
+        return ModelResponse(parts=[TextPart(reply)])
+
+    def checker(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        checked_documents.append(_last_request_text(messages))
+        return _report(info, [])
+
+    # Act
+    result = produce(
+        _specer(specer, VALID_DOCUMENT), _checker(checker), SOURCES, None, VALID_DOCUMENT
+    )
+
+    # Assert
+    assert "the operationId was `listAliases` and is now `getAliases`" in specer_requests[1]
+    assert result.document == VALID_DOCUMENT
+    assert len(checked_documents) == 1
+    assert "getAliases" not in checked_documents[0]

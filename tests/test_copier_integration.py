@@ -168,6 +168,25 @@ def generated_api_client_project(tmp_path_factory: pytest.TempPathFactory) -> Pa
     return project_dir
 
 
+@pytest.fixture(scope="session")
+def generated_spec_first_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Generate a spec-first project_type=api-client project once and reuse across tests."""
+    temp_dir = tmp_path_factory.mktemp("copier-spec-first-test")
+    project_dir = temp_dir / "my-awesome-project"
+
+    _generate_project(project_dir, {"project_type": "api-client", "spec_first": True})
+
+    result = subprocess.run(
+        ["uv", "sync", "--dev"],
+        capture_output=True,
+        text=True,
+        cwd=project_dir,
+    )
+    assert result.returncode == 0, f"uv sync failed: {result.stderr}"
+
+    return project_dir
+
+
 class TestCopierGeneration:
     """Test that the Copier template generates valid projects."""
 
@@ -1082,6 +1101,220 @@ class TestApiClientProject:
         if not which("prek"):
             pytest.skip("prek not installed")
         project_dir = _generate_project(tmp_path / "client-hooks", {"project_type": "api-client"})
+        subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
+        # prek needs a git repo to find files via --all-files
+        subprocess.run(["git", "init", "-q"], cwd=project_dir, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+        subprocess.run(["prek", "run", "--all-files"], cwd=project_dir, capture_output=True)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+
+        result = subprocess.run(
+            ["prek", "run", "--all-files"], capture_output=True, text=True, cwd=project_dir
+        )
+
+        assert result.returncode == 0, f"Hooks failed:\n{result.stdout}\n{result.stderr}"
+        assert "bandit" in result.stdout
+
+
+class TestSpecFirstApiClient:
+    """Test the spec_first option: agents that write `openapi.yaml`, and their init skill."""
+
+    def test_ships_the_agents_and_the_init_skill(self, generated_spec_first_project: Path) -> None:
+        """A spec-first client is derived from `openapi.yaml`, so the project needs what writes it.
+
+        The agents are development tooling: their dependencies stay out of the
+        package's own, and the wheel still holds the package alone.
+        """
+        expected = [
+            "tools/__init__.py",
+            "tools/openapi_agents/__init__.py",
+            "tools/openapi_agents/__main__.py",
+            "tools/openapi_agents/agents.py",
+            "tools/openapi_agents/pipeline.py",
+            "tools/openapi_agents/project.py",
+            "tools/openapi_agents/settings.py",
+            "tools/openapi_agents/upstream.py",
+            "tools/openapi_agents/validation.py",
+            "tests/tools/test_engine.py",
+            "tests/tools/test_project.py",
+            ".claude/skills/init-sdk/SKILL.md",
+        ]
+        for file_path in expected:
+            assert (generated_spec_first_project / file_path).exists(), f"Missing file: {file_path}"
+
+        pyproject = tomllib.loads((generated_spec_first_project / "pyproject.toml").read_text())
+        dependencies = [spec.split(">=")[0] for spec in pyproject["project"]["dependencies"]]
+        assert sorted(dependencies) == ["httpx2", "pydantic", "pydantic-settings"]
+        tools = [spec.split(">=")[0] for spec in pyproject["dependency-groups"]["tools"]]
+        assert tools == ["openapi-spec-validator", "pydantic-ai-slim[openrouter]", "pyyaml"]
+        assert {"include-group": "tools"} in pyproject["dependency-groups"]["dev"]
+        wheel = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]
+        assert wheel["packages"] == ["my_awesome_project"]
+        assert pyproject["tool"]["pyright"]["include"] == ["my_awesome_project", "tests", "tools"]
+        assert "--cov=tools" in pyproject["tool"]["pytest"]["ini_options"]["addopts"]
+
+    def test_bare_api_client_ships_no_agents(self, generated_api_client_project: Path) -> None:
+        """The option is opt-in: a client written by hand must not carry an LLM pipeline."""
+        for path in ("tools", "tests/tools", ".claude"):
+            assert not (generated_api_client_project / path).exists(), f"Unexpected: {path}"
+        pyproject = (generated_api_client_project / "pyproject.toml").read_text()
+        assert "pydantic-ai" not in pyproject
+        assert "tools" not in tomllib.loads(pyproject)["dependency-groups"]
+        assert "openapi.yaml" not in (generated_api_client_project / "AGENTS.md").read_text()
+        assert "OPENROUTER" not in (generated_api_client_project / ".env.example").read_text()
+
+    def test_option_is_ignored_for_other_project_types(self, tmp_path: Path) -> None:
+        """The agents write the document of an HTTP API, which only an API client has."""
+        project_dir = _generate_project(
+            tmp_path / "library", {"project_type": "library", "spec_first": True}
+        )
+
+        for path in ("tools", "tests/tools", ".claude"):
+            assert not (project_dir / path).exists(), f"Unexpected: {path}"
+        assert "pydantic-ai" not in (project_dir / "pyproject.toml").read_text()
+        assert "spec_first" not in (project_dir / ".copier-answers.yml").read_text()
+
+    def test_agents_md_gates_work_on_the_openapi_document(
+        self, generated_spec_first_project: Path
+    ) -> None:
+        """No skill runs by itself, so the instructions every agent reads carry the gate.
+
+        A project without `openapi.yaml` is not initialised, and the agent has
+        to learn that, and where the procedure is, before it adds an endpoint.
+        """
+        agents_md = (generated_spec_first_project / "AGENTS.md").read_text()
+
+        assert "### Spec-first" in agents_md
+        assert "`openapi.yaml`" in agents_md
+        assert "`.claude/skills/init-sdk/SKILL.md`" in agents_md
+        assert "`uv run python -m tools.openapi_agents`" in agents_md
+        assert "{{" not in agents_md, "Unrendered template variable found"
+
+    def test_skill_names_the_generated_package(self, generated_spec_first_project: Path) -> None:
+        """The skill sends the agent to the placeholders, so it must name the files that exist."""
+        skill = (generated_spec_first_project / ".claude/skills/init-sdk/SKILL.md").read_text()
+
+        assert skill.startswith("---\nname: init-sdk\n")
+        assert "`my_awesome_project/settings.py`" in skill
+        assert "`tools/openapi_agents/project.py`" in skill
+        assert "{{" not in skill, "Unrendered template variable found"
+
+    def test_env_example_names_the_key_of_the_agents(
+        self, generated_spec_first_project: Path
+    ) -> None:
+        """The agents read their key from the same `.env` as the client, under another name."""
+        env_example = (generated_spec_first_project / ".env.example").read_text()
+        settings = (generated_spec_first_project / "tools/openapi_agents/settings.py").read_text()
+
+        assert "\nMY_AWESOME_PROJECT_API_KEY=\n" in env_example
+        assert "\nOPENROUTER_API_KEY=\n" in env_example
+        assert "openrouter_api_key: SecretStr" in settings
+
+    def test_readme_explains_the_run_in_each_language(self, tmp_path: Path) -> None:
+        """A run spends money, so the README says how to start one and what it needs."""
+        project_dir = _generate_project(
+            tmp_path / "spec-first-readme",
+            {"project_type": "api-client", "spec_first": True, "language": "Both"},
+        )
+
+        readme = (project_dir / "README.md").read_text()
+
+        assert readme.count("uv run python -m tools.openapi_agents") == 2
+        assert readme.count("`OPENROUTER_API_KEY`") == 2
+
+    def test_project_module_is_kept_on_a_later_generation(self, tmp_path: Path) -> None:
+        """The init skill rewrites `project.py` for one API, and an update must not undo that.
+
+        The engine beside it stays a template file, so that fixes reach the project.
+        """
+        project_dir = tmp_path / "initialised"
+        agents_dir = project_dir / "tools/openapi_agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "project.py").write_text("API_NAME = 'Weather'\n")
+
+        _generate_project(project_dir, {"project_type": "api-client", "spec_first": True})
+
+        assert (agents_dir / "project.py").read_text() == "API_NAME = 'Weather'\n"
+        # Sanity check: the engine still arrived
+        assert (agents_dir / "pipeline.py").exists()
+
+    def test_linting_passes(self, generated_spec_first_project: Path) -> None:
+        """The agents are linted with the rules of the project they are generated into."""
+        result = subprocess.run(
+            ["uv", "run", "ruff", "check", "."],
+            capture_output=True,
+            text=True,
+            cwd=generated_spec_first_project,
+        )
+        assert result.returncode == 0, f"Ruff check failed: {result.stdout}\n{result.stderr}"
+
+    def test_formatting_is_clean(self, generated_spec_first_project: Path) -> None:
+        """The first commit runs the formatter, so the agents must already be formatted."""
+        result = subprocess.run(
+            ["uv", "run", "ruff", "format", "--check", "."],
+            capture_output=True,
+            text=True,
+            cwd=generated_spec_first_project,
+        )
+        assert result.returncode == 0, f"Ruff format failed: {result.stdout}\n{result.stderr}"
+
+    def test_type_checking_passes(self, generated_spec_first_project: Path) -> None:
+        """Pyright (strict) covers `tools`, so the agents must pass it too."""
+        result = subprocess.run(
+            ["uv", "run", "pyright"],
+            capture_output=True,
+            text=True,
+            cwd=generated_spec_first_project,
+        )
+        assert result.returncode == 0, f"Pyright failed: {result.stdout}\n{result.stderr}"
+
+    def test_tests_pass(self, generated_spec_first_project: Path) -> None:
+        """The agents ship with their tests, which replace the model and need no key.
+
+        Each project locks its own pydantic-ai, so the tests travel with the code.
+        """
+        result = subprocess.run(
+            ["uv", "run", "pytest", "-v"],
+            capture_output=True,
+            text=True,
+            cwd=generated_spec_first_project,
+        )
+        assert result.returncode == 0, f"Tests failed: {result.stdout}\n{result.stderr}"
+        assert "tests/tools/test_engine.py" in result.stdout
+        assert "tests/test_client.py" in result.stdout
+
+    def test_agents_refuse_to_run_before_the_project_is_initialised(
+        self, generated_spec_first_project: Path
+    ) -> None:
+        """A run without sources would bill a model for a document about nothing.
+
+        The run stops before it reads the key, and says where the procedure is.
+        """
+        # Sanity check: a new project vendors no source yet
+        assert not (generated_spec_first_project / "upstream").exists()
+
+        result = subprocess.run(
+            ["uv", "run", "python", "-m", "tools.openapi_agents"],
+            capture_output=True,
+            text=True,
+            cwd=generated_spec_first_project,
+        )
+
+        assert result.returncode == 2, f"Unexpected run: {result.stdout}\n{result.stderr}"
+        assert ".claude/skills/init-sdk/SKILL.md" in result.stderr
+        assert not (generated_spec_first_project / "openapi.yaml").exists()
+
+    def test_passes_its_own_hooks(self, tmp_path: Path) -> None:
+        """Bandit only runs as a hook, and the agents start a `git` subprocess.
+
+        The first pass may rewrite files, as the post-generate task allows, so
+        the second pass is the one that must be clean.
+        """
+        if not which("prek"):
+            pytest.skip("prek not installed")
+        project_dir = _generate_project(
+            tmp_path / "spec-first-hooks", {"project_type": "api-client", "spec_first": True}
+        )
         subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
         # prek needs a git repo to find files via --all-files
         subprocess.run(["git", "init", "-q"], cwd=project_dir, check=True)

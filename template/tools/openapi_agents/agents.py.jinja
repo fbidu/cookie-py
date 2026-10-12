@@ -1,0 +1,118 @@
+"""specer writes the OpenAPI document; specer-checker verifies it."""
+
+import logging
+from collections.abc import Sequence
+from types import NoneType
+
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent, ModelRetry
+from pydantic_ai.models import Model
+from pydantic_ai.models.openrouter import OpenRouterModelSettings
+from pydantic_ai.tools import ToolFuncEither
+
+from tools.openapi_agents.validation import (
+    PathRule,
+    name_changes,
+    strip_code_fence,
+    validate_document,
+)
+
+logger = logging.getLogger(__name__)
+
+# A long document, a tool call or two, and the validator's verdict each count
+# against the same budget.
+RETRIES = 3
+
+# Each tool call resends the sources and everything read so far. The cache
+# markers bill that repeated prefix at the cached rate; a model that is not
+# reached through OpenRouter ignores them.
+MODEL_SETTINGS = OpenRouterModelSettings(
+    thinking="high",
+    openrouter_cache_instructions=True,
+    openrouter_cache_tool_definitions=True,
+    openrouter_cache_messages=True,
+)
+
+
+class Discrepancy(BaseModel):
+    """A place where the OpenAPI document does not match its sources."""
+
+    operation: str = Field(description="HTTP method and path, e.g. `GET /api/v2/aliases`.")
+    detail: str = Field(description="What the document states and what it should state.")
+
+
+class CheckerReport(BaseModel):
+    # A project with more to report extends this class. It has no docstring on
+    # purpose: the checker would receive one as the description of its output.
+    discrepancies: list[Discrepancy]
+
+
+def build_specer[DepsT = None](
+    model: Model | str,
+    instructions: str,
+    *,
+    deps_type: type[DepsT] = NoneType,
+    tools: Sequence[ToolFuncEither[DepsT, ...]] = (),
+    path_rule: PathRule | None = None,
+    current: str | None = None,
+) -> Agent[DepsT, str]:
+    """Build specer for one project.
+
+    `tools` read the sources that do not fit in the prompt and `deps_type` is
+    what they read from. A project whose sources all fit needs neither. Specer
+    refuses to change a public name of `current`, the document it updates.
+    """
+    specer = Agent(
+        model,
+        deps_type=deps_type,
+        output_type=str,
+        name="specer",
+        instructions=instructions,
+        tools=tools,
+        model_settings=MODEL_SETTINGS,
+        retries=RETRIES,
+    )
+
+    @specer.output_validator
+    def validate(output: str) -> str:  # pyright: ignore[reportUnusedFunction]
+        document = strip_code_fence(output)
+        if errors := validate_document(document, path_rule):
+            logger.warning("specer's document failed validation with %d errors", len(errors))
+            message = (
+                "The document failed validation. Correct these errors and reply "
+                "with the full document:\n" + "\n".join(f"- {error}" for error in errors)
+            )
+            raise ModelRetry(message)
+        if current is not None and (changes := name_changes(current, document)):
+            logger.warning("specer's document changed %d public names", len(changes))
+            message = (
+                "The document changes names that the SDK exposes as its public "
+                "API. Restore each of them and reply with the full document:\n"
+                + "\n".join(f"- {change}" for change in changes)
+            )
+            raise ModelRetry(message)
+        logger.info("specer's document passed validation")
+        return document
+
+    return specer
+
+
+def build_checker[DepsT = None, ReportT: CheckerReport = CheckerReport](
+    model: Model | str,
+    instructions: str,
+    *,
+    report_type: type[ReportT] = CheckerReport,
+    deps_type: type[DepsT] = NoneType,
+    tools: Sequence[ToolFuncEither[DepsT, ...]] = (),
+) -> Agent[DepsT, ReportT]:
+    """Build specer-checker for one project, with the same tools as specer."""
+    return Agent(
+        model,
+        deps_type=deps_type,
+        output_type=report_type,
+        name="specer-checker",
+        instructions=instructions,
+        tools=tools,
+        model_settings=MODEL_SETTINGS,
+        retries=RETRIES,
+    )

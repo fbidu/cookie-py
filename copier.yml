@@ -48,6 +48,12 @@ pkg_name:
   default: "{{ directory_name | replace('-', '_') }}"
   when: "{{ project_type != 'docs' }}"
 
+spec_first:
+  type: bool
+  help: "Spec-first client? Adds agents that write openapi.yaml from the API's documentation, and a skill that sets them up"
+  default: false
+  when: "{{ project_type == 'api-client' }}"
+
 # Computed, never asked: the base class of the exceptions of an API client.
 error_class:
   type: str
@@ -148,10 +154,12 @@ dependency_updates:
 
 # Files a project owns once they exist. CLAUDE.md was filled by hand in projects
 # generated before AGENTS.md, and docs/index.md is the project's own home page,
-# so an update must not merge the template's version into them.
+# so an update must not merge the template's version into them. The init-sdk
+# skill rewrites the project module of the OpenAPI agents for one API.
 _skip_if_exists:
   - "CLAUDE.md"
   - "docs/index.md"
+  - "tools/openapi_agents/project.py"
 
 # --- Conditional file exclusion ---
 
@@ -173,6 +181,9 @@ _exclude:
   - "{% if project_type != 'api-client' %}tests/test_client.py{% endif %}"
   - "{% if project_type != 'api-client' %}tests/test_main.py{% endif %}"
   - "{% if project_type != 'api-client' %}.env.example{% endif %}"
+  - "{% if project_type != 'api-client' or not spec_first %}/tools{% endif %}"
+  - "{% if project_type != 'api-client' or not spec_first %}/tests/tools{% endif %}"
+  - "{% if project_type != 'api-client' or not spec_first %}/.claude{% endif %}"
   - "{% if project_type == 'api-client' %}tests/test_{{ pkg_name }}.py{% endif %}"
   - "{% if project_type == 'docs' %}tests{% endif %}"
   - "{% if project_type == 'docs' %}conftest.py{% endif %}"

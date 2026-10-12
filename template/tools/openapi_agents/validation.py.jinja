@@ -1,0 +1,108 @@
+"""Mechanical checks applied to the OpenAPI document before the checker sees it."""
+
+import re
+from collections.abc import Callable, Iterator
+
+import yaml
+from openapi_spec_validator import OpenAPIV31SpecValidator
+
+# A rule of one project on the paths of its document. It returns why a path is
+# not acceptable, worded to follow the path in a sentence, or None when it is.
+type PathRule = Callable[[str], str | None]
+
+_HTTP_METHODS = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
+_CODE_FENCE = re.compile(r"\A```[a-zA-Z]*\n(.*?)```\s*\Z", re.DOTALL)
+
+
+def strip_code_fence(text: str) -> str:
+    """Return `text` without a Markdown code fence wrapped around all of it."""
+    match = _CODE_FENCE.match(text)
+    return match.group(1) if match else text
+
+
+def validate_document(text: str, path_rule: PathRule | None = None) -> list[str]:
+    """Return every reason `text` is not an acceptable OpenAPI document.
+
+    An empty list means the document is valid OpenAPI 3.1, gives every
+    operation an operationId and has no path that `path_rule` objects to.
+    """
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        return [f"The document is not valid YAML: {error}"]
+    if not isinstance(document, dict):
+        return ["The document is not a YAML mapping."]
+
+    errors = [
+        f"{'/'.join(str(part) for part in error.absolute_path) or '<root>'}: {error.message}"
+        for error in OpenAPIV31SpecValidator(document).iter_errors()
+    ]
+    paths = document.get("paths")
+    if isinstance(paths, dict):
+        errors.extend(_path_errors(paths, path_rule))
+    return errors
+
+
+def _path_errors(paths: dict[str, object], path_rule: PathRule | None) -> list[str]:
+    errors: list[str] = []
+    for path, item in paths.items():
+        if path_rule and (reason := path_rule(path)):
+            errors.append(f"paths: {path} {reason}")
+        if not isinstance(item, dict):
+            continue
+        for method in _HTTP_METHODS:
+            operation = item.get(method)
+            if isinstance(operation, dict) and "operationId" not in operation:
+                errors.append(f"paths: {method.upper()} {path} has no operationId")
+    return errors
+
+
+def name_changes(current: str, document: str) -> list[str]:
+    """Return every public name of `current` that `document` changes or drops.
+
+    The SDK names a method after each operationId, a resource after each tag
+    and a model after each schema, so these names are its public API. Both
+    arguments are valid documents. An operation that `document` no longer has
+    is not a change. A schema name is never dropped, even when nothing uses it
+    any more: removing a model is a decision for the maintainer.
+    """
+    before, after = yaml.safe_load(current), yaml.safe_load(document)
+    changes: list[str] = []
+    operations = dict(_operations(after))
+    for name, operation in _operations(before):
+        updated = operations.get(name)
+        if updated is None:
+            continue
+        old_id, new_id = operation.get("operationId"), updated.get("operationId")
+        if old_id != new_id:
+            changes.append(f"{name}: the operationId was `{old_id}` and is now `{new_id}`")
+        old_tags, new_tags = operation.get("tags"), updated.get("tags")
+        if old_tags != new_tags:
+            changes.append(f"{name}: the tags were {old_tags} and are now {new_tags}")
+    kept = _schema_names(after)
+    changes.extend(
+        f"components/schemas: `{schema}` is missing"
+        for schema in _schema_names(before)
+        if schema not in kept
+    )
+    return changes
+
+
+def _operations(document: dict[str, object]) -> Iterator[tuple[str, dict[str, object]]]:
+    """Yield each operation of `document` with its `METHOD path` name."""
+    paths = document.get("paths")
+    if not isinstance(paths, dict):
+        return
+    for path, item in paths.items():
+        if not isinstance(item, dict):
+            continue
+        for method in _HTTP_METHODS:
+            operation = item.get(method)
+            if isinstance(operation, dict):
+                yield f"{method.upper()} {path}", operation
+
+
+def _schema_names(document: dict[str, object]) -> list[str]:
+    components = document.get("components")
+    schemas = components.get("schemas") if isinstance(components, dict) else None
+    return list(schemas) if isinstance(schemas, dict) else []

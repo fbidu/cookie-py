@@ -1,0 +1,213 @@
+from tools.openapi_agents.validation import name_changes, strip_code_fence, validate_document
+
+VALID_DOCUMENT = """\
+openapi: 3.1.0
+info:
+  title: Example
+  version: "1"
+paths:
+  /api/v2/aliases:
+    get:
+      operationId: listAliases
+      responses:
+        "200":
+          description: The aliases of the account.
+"""
+
+NAMED_DOCUMENT = """\
+openapi: 3.1.0
+info:
+  title: Example
+  version: "1"
+paths:
+  /api/v2/aliases:
+    get:
+      operationId: listAliases
+      tags: [aliases]
+      responses:
+        "200":
+          description: The aliases of the account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AliasList"
+components:
+  schemas:
+    AliasList:
+      type: object
+"""
+
+
+def test_valid_document_has_no_errors() -> None:
+    """Specer's output is accepted only when validation returns nothing, so a
+    correct document must not produce noise that would trigger a retry."""
+    assert validate_document(VALID_DOCUMENT) == []
+
+
+def test_malformed_yaml_is_reported() -> None:
+    """Specer replies in free text, so the first failure mode is YAML that does
+    not parse. The parser's message must reach specer for it to fix the reply."""
+    # Act
+    errors = validate_document("openapi: [3.1.0")
+
+    # Assert
+    assert len(errors) == 1
+    assert "not valid YAML" in errors[0]
+
+
+def test_schema_errors_name_their_location() -> None:
+    """Specer corrects a large document from the error text alone, so each
+    error must say where in the document it applies."""
+    # Setup
+    document = VALID_DOCUMENT.replace('  version: "1"\n', "")
+    assert "version" not in document  # sanity check: the field is gone
+
+    # Act
+    errors = validate_document(document)
+
+    # Assert
+    assert errors == ["info: 'version' is a required property"]
+
+
+def test_openapi_3_0_is_rejected() -> None:
+    """The spec fixes the document at OpenAPI 3.1; a 3.0 document would pass a
+    version-agnostic validator and silently change the generated models."""
+    # Act
+    errors = validate_document(VALID_DOCUMENT.replace("3.1.0", "3.0.3"))
+
+    # Assert
+    assert any(error.startswith("openapi:") for error in errors)
+
+
+def test_a_path_the_project_rules_out_is_reported() -> None:
+    """A model that reads the whole documentation tends to include the
+    endpoints a project left out, so the scope is enforced mechanically, by a
+    rule the project supplies."""
+
+    # Setup
+    def path_rule(path: str) -> str | None:
+        return "is excluded from version 1" if path.startswith("/api/auth/") else None
+
+    document = VALID_DOCUMENT.replace("/api/v2/aliases", "/api/auth/login")
+
+    # Act
+    errors = validate_document(document, path_rule)
+
+    # Assert
+    assert errors == ["paths: /api/auth/login is excluded from version 1"]
+
+
+def test_missing_operation_id_is_reported() -> None:
+    """The SDK maps each operation to one method through its operationId, which
+    OpenAPI itself leaves optional."""
+    # Setup
+    document = VALID_DOCUMENT.replace("      operationId: listAliases\n", "")
+    assert "operationId" not in document  # sanity check: the field is gone
+
+    # Act
+    errors = validate_document(document)
+
+    # Assert
+    assert errors == ["paths: GET /api/v2/aliases has no operationId"]
+
+
+def test_code_fence_is_stripped() -> None:
+    """Models often wrap YAML in a Markdown fence despite instructions. Paying
+    for a full retry of a long document over three backticks is wasteful."""
+    # Act
+    stripped = strip_code_fence(f"```yaml\n{VALID_DOCUMENT}```\n")
+
+    # Assert
+    assert stripped == VALID_DOCUMENT
+
+
+def test_unfenced_document_is_unchanged() -> None:
+    """Fence stripping must not touch a document that has no fence."""
+    assert strip_code_fence(VALID_DOCUMENT) == VALID_DOCUMENT
+
+
+def test_a_renamed_operation_is_reported() -> None:
+    """Each SDK method is named after its operationId. A model that rewrites
+    the document picks another equally good name, which would rename a public
+    method in a release."""
+    # Setup
+    document = NAMED_DOCUMENT.replace("listAliases", "getAliases")
+
+    # Act
+    changes = name_changes(NAMED_DOCUMENT, document)
+
+    # Assert
+    assert changes == [
+        "GET /api/v2/aliases: the operationId was `listAliases` and is now `getAliases`"
+    ]
+
+
+def test_an_operation_moved_to_another_tag_is_reported() -> None:
+    """The tag decides which resource of the client carries the method, so a
+    changed tag moves `client.aliases.x` to another attribute."""
+    # Setup
+    document = NAMED_DOCUMENT.replace("tags: [aliases]", "tags: [contacts]")
+
+    # Act
+    changes = name_changes(NAMED_DOCUMENT, document)
+
+    # Assert
+    assert changes == ["GET /api/v2/aliases: the tags were ['aliases'] and are now ['contacts']"]
+
+
+def test_a_dropped_schema_name_is_reported() -> None:
+    """Each schema becomes a model class that callers import by name. A renamed
+    schema appears as the old name going missing."""
+    # Setup
+    document = NAMED_DOCUMENT.replace("AliasList", "Aliases")
+
+    # Act
+    changes = name_changes(NAMED_DOCUMENT, document)
+
+    # Assert
+    assert changes == ["components/schemas: `AliasList` is missing"]
+
+
+def test_an_update_that_keeps_the_names_is_accepted() -> None:
+    """An update exists to change the document. A check that also rejected a
+    new operation, a new schema or a corrected response would block the very
+    changes it is there to let through."""
+    # Setup
+    document = (
+        NAMED_DOCUMENT.replace('"200"', '"201"')
+        .replace(
+            "components:",
+            """\
+  /api/mailboxes:
+    get:
+      operationId: listMailboxes
+      tags: [mailboxes]
+      responses:
+        "200":
+          description: The mailboxes of the account.
+components:""",
+        )
+        .replace("    AliasList:", "    Mailbox:\n      type: object\n    AliasList:")
+    )
+    assert validate_document(document) == []  # sanity check: the edits kept it valid
+
+    # Act
+    changes = name_changes(NAMED_DOCUMENT, document)
+
+    # Assert
+    assert changes == []
+
+
+def test_a_removed_operation_is_accepted() -> None:
+    """Upstream can drop an endpoint, and the document then has to drop the
+    operation. Only an operation that is still there has a name to keep."""
+    # Setup
+    document = NAMED_DOCUMENT.replace("/api/v2/aliases", "/api/v3/aliases").replace(
+        "listAliases", "listAliasesV3"
+    )
+
+    # Act
+    changes = name_changes(NAMED_DOCUMENT, document)
+
+    # Assert
+    assert changes == []

@@ -145,4 +145,5 @@ analyzer/data/*
 analyzer/.snakemake
 # End of https://www.gitignore.io/api/python,visualstudiocode
 .DS_Store
-.claude/
+# Only this repository's own: the template ships a skill under template/.claude/.
+/.claude/

@@ -1,0 +1,36 @@
+from pathlib import Path
+
+import pytest
+
+from tools.openapi_agents.settings import Settings
+
+
+def test_settings_are_read_from_the_env_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The maintainer keeps the key in a git-ignored `.env` at the repository
+    root, where the agents are run. The run must find it without the key ever
+    being exported into a shell."""
+    # Setup
+    (tmp_path / ".env").write_text(
+        "OPENROUTER_API_KEY=key-from-env-file\nOPENAPI_AGENTS_MODEL=vendor/some-model\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAPI_AGENTS_MODEL", raising=False)
+
+    # Act
+    settings = Settings()  # pyright: ignore[reportCallIssue]
+
+    # Assert
+    assert settings.openrouter_api_key.get_secret_value() == "key-from-env-file"
+    assert settings.openapi_agents_model == "vendor/some-model"
+
+
+def test_the_api_key_is_not_shown_when_settings_are_printed() -> None:
+    """Settings end up in tracebacks and debug output; the key must not."""
+    # Act
+    settings = Settings(openrouter_api_key="secret-key", _env_file=None)  # pyright: ignore[reportArgumentType, reportCallIssue]
+
+    # Assert
+    assert "secret-key" not in repr(settings)

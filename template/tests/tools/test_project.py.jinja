@@ -1,0 +1,72 @@
+"""What this project tells the agents, and what it gives them to read."""
+
+from pathlib import Path
+
+import pytest
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+from tools.openapi_agents.__main__ import main
+from tools.openapi_agents.project import (
+    SOURCES_DIR,
+    SPECER_INSTRUCTIONS,
+    build_specer,
+    read_sources,
+)
+
+
+def test_sources_carry_every_vendored_document_under_its_path(tmp_path: Path) -> None:
+    """The agents know the API only through what the prompt carries. A document
+    left out would not fail the run: the result would only describe less, and
+    the path is how a discrepancy can say where it was read."""
+    # Setup
+    vendored = tmp_path / SOURCES_DIR
+    (vendored / "guides").mkdir(parents=True)
+    (vendored / "reference.md").write_text("REFERENCE_MARKER")
+    (vendored / "guides" / "errors.md").write_text("ERRORS_MARKER")
+
+    # Act
+    sources = read_sources(tmp_path)
+
+    # Assert
+    assert sources == (
+        '<source path="guides/errors.md">\nERRORS_MARKER\n</source>\n\n'
+        '<source path="reference.md">\nREFERENCE_MARKER\n</source>'
+    )
+
+
+def test_specer_is_built_with_the_instructions_of_this_project() -> None:
+    """The engine knows no API. What specer is told about this one reaches the
+    model only if the project passes its own instructions on."""
+    # Setup
+    received: list[str | None] = []
+    document = 'openapi: 3.1.0\ninfo:\n  title: Example\n  version: "1"\npaths: {}\n'
+
+    def specer(_: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        received.append(info.instructions)
+        return ModelResponse(parts=[TextPart(document)])
+
+    # Act
+    build_specer(FunctionModel(specer)).run_sync("SOURCES_MARKER")
+
+    # Assert
+    # pydantic-ai strips the text before it sends it.
+    assert received == [SPECER_INSTRUCTIONS.strip()]
+
+
+def test_a_run_without_sources_stops_before_it_reaches_a_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A run on a project that vendors no source would bill a model for a
+    document about nothing. It has to stop first, and say what is missing."""
+    # Setup
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    # Act
+    exit_code = main()
+
+    # Assert
+    assert exit_code == 2
+    assert f"No sources in {SOURCES_DIR}/" in capsys.readouterr().err
+    assert not (tmp_path / "openapi.yaml").exists()

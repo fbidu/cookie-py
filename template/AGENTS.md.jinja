@@ -50,6 +50,18 @@
 
 - This project is a Python client for an HTTP API. A caller builds one `Client` and calls one method per endpoint.
 - `DEFAULT_BASE_URL` in `{{ pkg_name }}/settings.py` and the `Authorization` header in `{{ pkg_name }}/client.py` are placeholders. Replace both with the values of the API before adding an endpoint.
+{%- if spec_first %}
+
+### Spec-first
+
+- `openapi.yaml`, at the repository root, is the canonical description of the API. The client is derived from it and never the reverse. A change in how the client talks to the API starts as a change to that file.
+- A repository without `openapi.yaml` is not initialised. Do not add an endpoint to it. Tell the user, and follow `.claude/skills/init-sdk/SKILL.md` when the user asks for the initialisation.
+- `uv run python -m tools.openapi_agents` writes `openapi.yaml`, or updates the one that exists. A run calls a paid model through OpenRouter. Start one only when the user asks for it.
+- The user reviews a new or updated `openapi.yaml` before it is committed.
+- The client takes its public names from `openapi.yaml`: a method from each operationId, a resource from each tag and a model from each schema name. An update of the document therefore keeps those names.
+- `upstream/` holds the vendored sources that the agents read. A source is replaced by a newer copy and never edited.
+- `tools/openapi_agents/project.py` is the only module that knows this API. The other modules of that package come from the project template, and `copier update` updates them. A fix to one of them belongs in the template.
+{%- endif %}
 
 ### Layout
 
@@ -58,10 +70,16 @@
 - `{{ pkg_name }}/settings.py` holds `Settings`, which reads the environment and `.env`.
 - `{{ pkg_name }}/__main__.py` holds the demo that `python -m {{ pkg_name }}` runs. It sends one GET request through `Client.from_env` and prints the response.
 - `.env.example` lists the variables that `Settings` reads. `.env` holds the real values and is never committed.
+{%- if spec_first %}
+- `tools/openapi_agents/` holds the agents that write `openapi.yaml`. It is development tooling and is not part of the package.
+{%- endif %}
 
 ### Adding an endpoint
 
 - An endpoint is one public method. The endpoints of one resource share a module, and the client exposes that resource as an attribute.
+{%- if spec_first %}
+- The client gains an endpoint only after `openapi.yaml` describes it.
+{%- endif %}
 - A pydantic model represents each request body and each response body.
 - A response model ignores unknown fields, which is the pydantic default. An API adds fields without notice, so `extra="forbid"` would break existing callers.
 - A method validates the response into its model. When validation fails, it raises `UnexpectedResponseError`.

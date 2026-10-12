@@ -1,0 +1,124 @@
+"""The production cycle: specer writes, the validator and specer-checker verify."""
+
+import logging
+import time
+from dataclasses import dataclass
+
+from pydantic_ai import Agent
+from pydantic_ai.messages import ModelMessage
+from pydantic_ai.run import AgentRunResult
+
+from tools.openapi_agents.agents import CheckerReport, Discrepancy
+
+MAX_ROUNDS = 3
+
+WRITE_PROMPT = "Write the OpenAPI document from these sources."
+
+UPDATE_PROMPT = """\
+Update the current OpenAPI document so that it matches these sources.
+
+The current document was reviewed, and the SDK takes its public names from \
+it: a method from each operationId, a resource from each tag and a model from \
+each schema name. Change it only where it does not match the sources or \
+does not follow the conventions. Everywhere else reproduce it as it is: the \
+same names, structure, order and wording. Reply with the full document."""
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Result[ReportT: CheckerReport]:
+    document: str
+    # What the last check reported.
+    report: ReportT
+
+    @property
+    def remaining(self) -> list[Discrepancy]:
+        """Discrepancies the last check still found; empty unless the rounds ran out."""
+        return self.report.discrepancies
+
+
+def produce[DepsT, ReportT: CheckerReport](
+    specer: Agent[DepsT, str],
+    checker: Agent[DepsT, ReportT],
+    sources: str,
+    deps: DepsT,
+    current: str | None = None,
+) -> Result[ReportT]:
+    """Run specer and specer-checker until the document is clean or the rounds run out.
+
+    `sources` is the text both agents read in their prompt and `deps` is what
+    their tools read from, or None for agents without tools. With `current`,
+    specer updates that document instead of writing a new one.
+    """
+
+    def check(document: str, round_number: int) -> ReportT:
+        logger.info("Round %d: specer-checker is verifying the document", round_number)
+        report = _run(
+            "specer-checker",
+            checker,
+            f"Verify this OpenAPI document against the sources.\n\n{sources}\n\n"
+            f"<openapi_document>\n{document}\n</openapi_document>",
+            deps,
+        ).output
+        logger.info(
+            "Round %d: specer-checker found %d discrepancies",
+            round_number,
+            len(report.discrepancies),
+        )
+        for item in report.discrepancies:
+            logger.info("- %s: %s", item.operation, item.detail)
+        return report
+
+    if current is None:
+        logger.info("Round 1: specer is writing the document")
+        prompt = f"{WRITE_PROMPT}\n\n{sources}"
+    else:
+        logger.info("Round 1: specer is updating the current document")
+        prompt = (
+            f"{UPDATE_PROMPT}\n\n{sources}\n\n<current_document>\n{current}\n</current_document>"
+        )
+    written = _run("specer", specer, prompt, deps)
+    report = check(written.output, 1)
+    # The first check closed round one; each further round is a correction and a check.
+    for round_number in range(2, MAX_ROUNDS + 1):
+        if not report.discrepancies:
+            break
+        logger.info("Round %d: specer is correcting the document", round_number)
+        written = _run(
+            "specer",
+            specer,
+            "A reviewer compared your document with the sources and found the "
+            "discrepancies below. Correct them and reply with the full document.\n\n"
+            + "\n".join(f"- {item.operation}: {item.detail}" for item in report.discrepancies),
+            deps,
+            written.all_messages(),
+        )
+        report = check(written.output, round_number)
+    return Result(written.output, report)
+
+
+def _run[DepsT, OutputT](
+    name: str,
+    agent: Agent[DepsT, OutputT],
+    prompt: str,
+    deps: DepsT,
+    message_history: list[ModelMessage] | None = None,
+) -> AgentRunResult[OutputT]:
+    """Run one agent call and log what it cost."""
+    started = time.monotonic()
+    result = agent.run_sync(prompt, deps=deps, message_history=message_history)
+    usage = result.usage
+    logger.info(
+        "%s finished in %.0fs: %d requests, %d tool calls, %d input tokens "
+        "(%d read from cache, %d written to it), %d output tokens",
+        name,
+        time.monotonic() - started,
+        usage.requests,
+        usage.tool_calls,
+        usage.input_tokens,
+        usage.cache_read_tokens,
+        usage.cache_write_tokens,
+        usage.output_tokens,
+    )
+    return result

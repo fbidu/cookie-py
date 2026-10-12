@@ -1,0 +1,94 @@
+---
+name: init-sdk
+description: Initialise this spec-first API client. Use when `openapi.yaml` does not exist yet. It collects what is known about the API, vendors its documentation, fills the placeholders of the scaffold and prepares the first run of the agents that write `openapi.yaml`.
+---
+
+# Initialise the SDK
+
+- This project is a spec-first API client. `openapi.yaml` is written first, and the client is derived from it.
+- This skill takes the project from the generated scaffold to a reviewed `openapi.yaml`. It adds no endpoint to the client.
+- When `openapi.yaml` exists at the repository root, the project is already initialised. Say so and stop.
+
+## 1. Ask about the API
+
+- Ask the user every question below in one message. Do not guess an answer, and do not continue before each one is answered.
+
+1. What is the name of the API, and where is its documentation?
+2. Does the vendor publish an OpenAPI or Swagger document? If so, where?
+3. What is the base URL of the API?
+4. How does a request authenticate (which header, which scheme)?
+5. Is the code of the server public? If so, where is its repository?
+6. Which endpoints does the first version of the client cover, and which are left out?
+7. Under which terms is the documentation published? May this repository hold a copy of it?
+
+## 2. Choose the source of truth
+
+- The source of truth is what `openapi.yaml` must agree with. Choose it by the first case below that applies.
+
+| What exists | Source of truth | Next step |
+|---|---|---|
+| An OpenAPI 3.1 document from the vendor | That document | Adopt it (below), then go to section 5 |
+| An OpenAPI 3.0 or Swagger 2.0 document from the vendor | That document | Vendor it in section 3. The agents write the 3.1 document from it. |
+| Public server code | The code, then the published documentation | Sections 3 and 4 |
+| Published documentation only | The documentation | Section 3 |
+
+- State the choice to the user in one sentence, and wait for their confirmation.
+
+### Adopting a 3.1 document from the vendor
+
+- Save the document as `openapi.yaml`. Record its URL and the date of retrieval in `upstream/README.md`.
+- Check it with `uv run python -c "from pathlib import Path; from tools.openapi_agents.validation import validate_document; print(validate_document(Path('openapi.yaml').read_text()))"`. An empty list means the document is accepted.
+- When the check reports errors, do not edit the document by hand. Delete `openapi.yaml`, and treat the document as a source to vendor in section 3.
+- An adopted document needs no run of the agents, so section 6 does not apply.
+
+## 3. Vendor the sources
+
+- `upstream/` holds a copy of each source as text (Markdown, YAML or JSON). The agents read every file in it.
+- Convert an HTML page to Markdown. Copy the content as it is: do not summarise, reorder or correct it.
+- Vendor only the pages that describe the endpoints in scope, the authentication, the errors and the pagination. The prompt of every round carries every file.
+- `upstream/README.md` lists each file with the URL it came from and the date of retrieval.
+- A source is replaced by a newer copy and never edited.
+- When the terms of the documentation do not allow a copy in this repository, or the user does not know them, do not commit the copies. Add `upstream/*` and `!upstream/README.md` to `.gitignore`, and tell the user that a new clone has to fetch the sources again.
+- Report the total size of `upstream/` to the user. Above 400 KB, ask the user whether to narrow the scope before continuing.
+
+## 4. Wire the public server code
+
+- This section applies only when the code of the server is public. Otherwise leave `tools/openapi_agents/upstream.py` as it is: nothing uses it.
+- The code states what the server does, so it overrides the published documentation wherever the two disagree.
+- `upstream/COMMIT` holds the commit of the server repository that the agents read. Pin the commit that the vendored documentation describes.
+- In `tools/openapi_agents/project.py`:
+    - `ensure_checkout` from `upstream.py` clones the repository into `.upstream/` at the pinned commit and returns a `Checkout`. Its `source_glob` argument selects the files that are the code of the server, such as `*.py` or `*.go`.
+    - Both builders receive `deps_type=Checkout` and `tools=[read_upstream_file, search_upstream]`.
+    - `read_sources` also returns the modules of the API handlers, through `Checkout.api_code`.
+    - `_SOURCES_AND_SCOPE` states that the code decides every question.
+- In `tools/openapi_agents/__main__.py`, the fourth argument of `produce` becomes the `Checkout`. This is the only change this skill makes outside `project.py` in that package.
+- Add `.upstream/` to `.gitignore`.
+
+## 5. Fill the placeholders
+
+- Each placeholder is marked with a `# Placeholder:` comment. Remove the comment when the value is filled.
+- `tools/openapi_agents/project.py`:
+    - `API_NAME`, `SERVER_URL` and `AUTHENTICATION` take the answers of section 1.
+    - `_SOURCES_AND_SCOPE` names each source, says which one decides when two of them disagree, and states the scope.
+    - When endpoints are left out, add a `path_rule` function and pass it to `agents.build_specer` as `path_rule`. `PathRule` in `tools/openapi_agents/validation.py` documents its contract. Write its test in `tests/tools/test_project.py` first.
+- `{{ pkg_name }}/settings.py`: `DEFAULT_BASE_URL` takes the base URL.
+- `{{ pkg_name }}/client.py`: the header that carries the key follows the answer on authentication. Change its test in `tests/test_client.py` first.
+- `AGENTS.md`: describe the API at the top, and remove the bullet that calls these values placeholders.
+- Run `uv run pytest`. Every test must pass before section 6.
+
+## 6. Run the agents
+
+- A run calls a paid model through OpenRouter and takes several minutes. Start one only after the user says so in this conversation.
+- The key is read from `OPENROUTER_API_KEY` in `.env`, which the user creates from `.env.example`. Do not ask the user for the key, and do not read `.env`.
+- Run `uv run python -m tools.openapi_agents` from the repository root. The log shows each round, what the checker found and the tokens of each call.
+- The exit status tells the outcome:
+    - 0: the last check found no discrepancy.
+    - 1: discrepancies remain after three rounds. Show them to the user, who decides between another run and a correction of the sources or of the instructions.
+    - 2: `upstream/` holds no source.
+
+## 7. Hand over
+
+- Report to the user the number of operations in `openapi.yaml`, its tags, the discrepancies that remain and the tokens the run used.
+- The user reviews `openapi.yaml` before it is committed.
+- Commit the sources and the filled placeholders in one commit, and `openapi.yaml` in another.
+- From here on, the rules in `AGENTS.md` apply. The client gains an endpoint only after `openapi.yaml` describes it.

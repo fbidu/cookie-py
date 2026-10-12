@@ -1,0 +1,122 @@
+"""Access to the upstream code the agents read, for an API whose code is public."""
+
+import logging
+import os
+import re
+import subprocess  # nosec B404
+from dataclasses import dataclass
+from pathlib import Path
+
+from pydantic_ai import ModelRetry, RunContext
+
+MAX_SEARCH_MATCHES = 200
+
+logger = logging.getLogger(__name__)
+
+
+class UpstreamError(Exception):
+    """A request for upstream code that the checkout cannot serve."""
+
+
+@dataclass(frozen=True)
+class Checkout:
+    """A local checkout of upstream at the pinned commit."""
+
+    path: Path
+    # Which files are the code of the server, e.g. `*.py` or `*.go`.
+    source_glob: str
+
+    def read(self, relative_path: str, start_line: int = 1, max_lines: int = 400) -> str:
+        """Return up to `max_lines` lines of a file, starting at `start_line`."""
+        root = self.path.resolve()
+        target = (root / relative_path).resolve()
+        if not target.is_relative_to(root):
+            message = f"{relative_path} is outside the checkout"
+            raise UpstreamError(message)
+        if not target.is_file():
+            message = f"{relative_path}: no such file"
+            raise UpstreamError(message)
+        lines = target.read_text().splitlines(keepends=True)
+        return "".join(lines[start_line - 1 : start_line - 1 + max_lines])
+
+    def search(self, pattern: str) -> str:
+        """Return `path:line: text` for each line of a source file matching `pattern`."""
+        expression = re.compile(pattern)
+        matches: list[str] = []
+        for file in sorted(self.path.rglob(self.source_glob)):
+            for number, line in enumerate(file.read_text().splitlines(), start=1):
+                if expression.search(line):
+                    matches.append(f"{file.relative_to(self.path)}:{number}: {line.strip()}")
+                    if len(matches) == MAX_SEARCH_MATCHES:
+                        return "\n".join(matches)
+        return "\n".join(matches)
+
+    def api_code(self, package: str) -> str:
+        """Return every source file of `package`, each under a path header.
+
+        `package` is the directory of the API handlers, relative to the checkout.
+        """
+        modules = sorted((self.path / package).rglob(self.source_glob))
+        return "\n".join(
+            f"# {module.relative_to(self.path)}\n{module.read_text()}" for module in modules
+        )
+
+
+def _agent_name(ctx: RunContext[Checkout]) -> str | None:
+    return ctx.agent.name if ctx.agent else None
+
+
+def read_upstream_file(
+    ctx: RunContext[Checkout], path: str, start_line: int = 1, max_lines: int = 400
+) -> str:
+    """Read a file of the upstream repository.
+
+    Args:
+        path: Path relative to the repository root, e.g. `app/models.py`.
+        start_line: First line to return, counting from 1.
+        max_lines: Number of lines to return. Large files are best read in windows.
+    """
+    logger.info("%s is reading %s from line %d", _agent_name(ctx), path, start_line)
+    try:
+        return ctx.deps.read(path, start_line, max_lines)
+    except UpstreamError as error:
+        raise ModelRetry(str(error)) from error
+
+
+def search_upstream(ctx: RunContext[Checkout], pattern: str) -> str:
+    """Search the source files of the upstream repository.
+
+    Returns one `path:line: text` entry per matching line.
+
+    Args:
+        pattern: A Python regular expression, matched against each line.
+    """
+    logger.info("%s is searching upstream for %r", _agent_name(ctx), pattern)
+    try:
+        return ctx.deps.search(pattern) or "No match."
+    except re.error as error:
+        message = f"Invalid regular expression: {error}"
+        raise ModelRetry(message) from error
+
+
+def ensure_checkout(path: Path, commit: str, url: str, source_glob: str) -> Checkout:
+    """Return a checkout of `url` at `commit`, cloning or updating `path` as needed.
+
+    `source_glob` selects the files that are the code of the server.
+    """
+    if not path.exists():
+        _git("clone", "--quiet", "--filter=blob:none", "--no-checkout", url, str(path))
+    elif _git("rev-parse", "HEAD", cwd=path) != commit:
+        _git("fetch", "--quiet", "origin", cwd=path)
+    _git("checkout", "--quiet", "--detach", commit, cwd=path)
+    return Checkout(path, source_glob)
+
+
+def _git(*args: str, cwd: Path | None = None) -> str:
+    # A git hook exports GIT_DIR and related variables for the repository that
+    # fired it. Inherited, they would point these commands at that repository.
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    result = subprocess.run(  # nosec B603 B607
+        ["git", *args], cwd=cwd, env=env, check=True, capture_output=True, text=True
+    )
+    return result.stdout.strip()
