@@ -39,6 +39,7 @@ project_type:
   choices:
     "Library": "library"
     "CLI application (Click)": "cli"
+    "API client (httpx2)": "api-client"
     "Documentation only (MkDocs)": "docs"
 
 pkg_name:
@@ -46,6 +47,12 @@ pkg_name:
   help: "Python package name"
   default: "{{ directory_name | replace('-', '_') }}"
   when: "{{ project_type != 'docs' }}"
+
+# Computed, never asked: the base class of the exceptions of an API client.
+error_class:
+  type: str
+  default: "{{ pkg_name | replace('_', ' ') | title | replace(' ', '') }}Error"
+  when: false
 
 description:
   type: str
@@ -160,6 +167,13 @@ _exclude:
   - "{% if ci_provider != 'forgejo' %}.forgejo/workflows/copier-update.yml{% endif %}"
   - "{% if ci_provider != 'forgejo' or not publish_docs %}.forgejo/workflows/docs.yml{% endif %}"
   - "{% if project_type != 'cli' %}{{ pkg_name }}/cli.py{% endif %}"
+  - "{% if project_type != 'api-client' %}{{ pkg_name }}/client.py{% endif %}"
+  - "{% if project_type != 'api-client' %}{{ pkg_name }}/errors.py{% endif %}"
+  - "{% if project_type != 'api-client' %}{{ pkg_name }}/settings.py{% endif %}"
+  - "{% if project_type != 'api-client' %}tests/test_client.py{% endif %}"
+  - "{% if project_type != 'api-client' %}tests/test_main.py{% endif %}"
+  - "{% if project_type != 'api-client' %}.env.example{% endif %}"
+  - "{% if project_type == 'api-client' %}tests/test_{{ pkg_name }}.py{% endif %}"
   - "{% if project_type == 'docs' %}tests{% endif %}"
   - "{% if project_type == 'docs' %}conftest.py{% endif %}"
   - "{% if project_type == 'docs' %}Dockerfile{% endif %}"

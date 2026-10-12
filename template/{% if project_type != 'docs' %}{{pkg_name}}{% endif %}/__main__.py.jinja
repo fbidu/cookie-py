@@ -5,6 +5,46 @@ from {{ pkg_name }}.cli import main
 
 if __name__ == "__main__":
     main()
+{%- elif project_type == "api-client" -%}
+"""A demo of the client: send one GET request and print the response.
+
+Run it with `python -m {{ pkg_name }} /some/path`. The key and the base URL come
+from the environment and `.env`, as `.env.example` describes.
+"""
+
+import argparse
+import sys
+
+from {{ pkg_name }}.client import Client
+from {{ pkg_name }}.errors import {{ error_class }}
+
+
+def main(argv: list[str] | None = None, client: Client | None = None) -> int:
+    """Run the demo and return its exit code.
+
+    Args:
+        argv: The command-line arguments. The default is those of the process.
+        client: The client to use. The default is `Client.from_env()`.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m {{ pkg_name }}",
+        description="Send one GET request to the API and print the response.",
+    )
+    parser.add_argument("path", nargs="?", default="/", help="the path to request (default: /)")
+    path: str = parser.parse_args(argv).path
+    try:
+        with client or Client.from_env() as open_client:
+            response = open_client.request("GET", path)
+    except {{ error_class }} as error:
+        print(f"{type(error).__name__}: {error}", file=sys.stderr)
+        return 1
+    print(response.status_code)
+    print(response.text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 {%- else -%}
 """
 Here be awesome code!

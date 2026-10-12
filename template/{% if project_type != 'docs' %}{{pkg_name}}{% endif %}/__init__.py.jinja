@@ -1,0 +1,32 @@
+{%- if project_type == "api-client" -%}
+{#- The base error is named after the package, so its place in each list is
+    only known here. Ruff sorts imports ignoring case and `__all__` minding it. -#}
+{%- set errors = [
+    "APIError",
+    "AuthenticationError",
+    "ConfigurationError",
+    error_class,
+    "TransportError",
+    "UnexpectedResponseError",
+] -%}
+"""A Python client for the API. `Client` is the entry point."""
+
+import logging
+
+from {{ pkg_name }}.client import Client
+from {{ pkg_name }}.errors import (
+{%- for name in errors | sort %}
+    {{ name }},
+{%- endfor %}
+)
+
+__all__ = [
+{%- for name in (errors + ["Client"]) | sort(case_sensitive=true) %}
+    "{{ name }}",
+{%- endfor %}
+]
+
+# A library leaves logging to its host. Without a handler of its own, a host
+# that configures nothing would get the warnings on stderr.
+logging.getLogger(__name__).addHandler(logging.NullHandler())
+{% endif -%}

@@ -1,0 +1,33 @@
+"""The exceptions the client raises.
+
+Each one derives from `{{ error_class }}`, so a caller catches one base class.
+"""
+
+
+class {{ error_class }}(Exception):
+    """Base class of every exception this package raises."""
+
+
+class ConfigurationError({{ error_class }}):
+    """A setting read from the environment is missing or invalid."""
+
+
+class TransportError({{ error_class }}):
+    """The request got no response: the connection failed or timed out."""
+
+
+class APIError({{ error_class }}):
+    """The API answered with a status code of 400 or above."""
+
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(f"{status_code}: {message}")
+        self.status_code = status_code
+        self.message = message
+
+
+class AuthenticationError(APIError):
+    """The API rejected the credentials, with status code 401."""
+
+
+class UnexpectedResponseError({{ error_class }}):
+    """A successful response did not match the model of its endpoint."""

@@ -149,6 +149,25 @@ def generated_docs_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return project_dir
 
 
+@pytest.fixture(scope="session")
+def generated_api_client_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Generate a project_type=api-client project once and reuse across tests."""
+    temp_dir = tmp_path_factory.mktemp("copier-api-client-test")
+    project_dir = temp_dir / "my-awesome-project"
+
+    _generate_project(project_dir, {"project_type": "api-client"})
+
+    result = subprocess.run(
+        ["uv", "sync", "--dev"],
+        capture_output=True,
+        text=True,
+        cwd=project_dir,
+    )
+    assert result.returncode == 0, f"uv sync failed: {result.stderr}"
+
+    return project_dir
+
+
 class TestCopierGeneration:
     """Test that the Copier template generates valid projects."""
 
@@ -863,6 +882,219 @@ class TestDocsOnlyProject:
         workflow = (project_dir / ".forgejo/workflows/docs.yml").read_text()
         assert "docs/**" in workflow
         assert "my_awesome_project" not in workflow
+
+
+class TestApiClientProject:
+    """Test the project_type=api-client scaffold: an HTTP client, its errors and its settings."""
+
+    def test_ships_the_client_scaffold(self, generated_api_client_project: Path) -> None:
+        """Every API client starts from the same decisions, so the scaffold makes them once.
+
+        The placeholder test goes away: the client ships with tests of its own.
+        """
+        expected = [
+            "my_awesome_project/client.py",
+            "my_awesome_project/errors.py",
+            "my_awesome_project/settings.py",
+            "tests/test_client.py",
+            ".env.example",
+        ]
+        for file_path in expected:
+            assert (generated_api_client_project / file_path).exists(), f"Missing file: {file_path}"
+        assert not (generated_api_client_project / "tests/test_my_awesome_project.py").exists()
+
+        pyproject = tomllib.loads((generated_api_client_project / "pyproject.toml").read_text())
+        dependencies = [spec.split(">=")[0] for spec in pyproject["project"]["dependencies"]]
+        assert sorted(dependencies) == ["httpx2", "pydantic", "pydantic-settings"]
+        # An API client is a library: it installs no command on the caller's PATH.
+        assert "scripts" not in pyproject["project"]
+
+    def test_env_example_names_the_variables_the_settings_read(
+        self, generated_api_client_project: Path
+    ) -> None:
+        """`.env.example` is what a user copies to `.env`.
+
+        A variable there that the settings do not read is ignored without an
+        error, and the user is left with a key that seems to be missing.
+        """
+        settings = (generated_api_client_project / "my_awesome_project/settings.py").read_text()
+        env_example = (generated_api_client_project / ".env.example").read_text()
+
+        assert 'ENV_PREFIX = "MY_AWESOME_PROJECT_"' in settings
+        assert "\nMY_AWESOME_PROJECT_API_KEY=\n" in env_example
+
+    def test_readme_points_to_the_env_example_in_each_language(self, tmp_path: Path) -> None:
+        """The README is where a new user learns how to hand the key to the client."""
+        project_dir = _generate_project(
+            tmp_path / "client-readme", {"project_type": "api-client", "language": "Both"}
+        )
+
+        readme = (project_dir / "README.md").read_text()
+
+        assert readme.count("`.env.example`") == 2, "Expected once per README language"
+        assert readme.count("`Client.from_env()`") == 2
+        assert readme.count("`uv run python -m my_awesome_project /some/path`") == 2
+
+    def test_env_file_itself_is_ignored_by_git(self, generated_api_client_project: Path) -> None:
+        """`.env` holds the real key, so only its example may be committed."""
+        ignored = (generated_api_client_project / ".gitignore").read_text().splitlines()
+
+        assert ".env" in ignored
+        assert ".env.example" not in ignored
+
+    def test_other_project_types_ship_no_client_scaffold(self, generated_project: Path) -> None:
+        """A plain library must not gain an HTTP client or its dependencies."""
+        for file_path in ("client.py", "errors.py", "settings.py"):
+            assert not (generated_project / "my_awesome_project" / file_path).exists()
+        assert not (generated_project / ".env.example").exists()
+        assert not (generated_project / "tests/test_client.py").exists()
+        assert not (generated_project / "tests/test_main.py").exists()
+        assert (generated_project / "my_awesome_project/__init__.py").read_text() == ""
+        assert "httpx2" not in (generated_project / "pyproject.toml").read_text()
+        assert "API client" not in (generated_project / "AGENTS.md").read_text()
+
+    def test_agents_md_states_the_client_rules(self, generated_api_client_project: Path) -> None:
+        """The rules of the client outlive the scaffold only if the agents can read them.
+
+        The errors are named after the package, so the rules must name the
+        class that was generated.
+        """
+        agents_md = (generated_api_client_project / "AGENTS.md").read_text()
+
+        assert "## API client" in agents_md
+        assert "`MyAwesomeProjectError`" in agents_md
+        assert "`httpx2.MockTransport`" in agents_md
+        assert "{{" not in agents_md, "Unrendered template variable found"
+        errors = (generated_api_client_project / "my_awesome_project/errors.py").read_text()
+        assert "class MyAwesomeProjectError(Exception):" in errors
+
+    def test_linting_passes(self, generated_api_client_project: Path) -> None:
+        """A freshly generated API client must lint clean."""
+        result = subprocess.run(
+            ["uv", "run", "ruff", "check", "."],
+            capture_output=True,
+            text=True,
+            cwd=generated_api_client_project,
+        )
+        assert result.returncode == 0, f"Ruff check failed: {result.stdout}\n{result.stderr}"
+
+    def test_formatting_is_clean(self, generated_api_client_project: Path) -> None:
+        """The first commit runs the formatter, so the scaffold must already be formatted.
+
+        The package name is rendered into the code, which moves line breaks.
+        """
+        result = subprocess.run(
+            ["uv", "run", "ruff", "format", "--check", "."],
+            capture_output=True,
+            text=True,
+            cwd=generated_api_client_project,
+        )
+        assert result.returncode == 0, f"Ruff format failed: {result.stdout}\n{result.stderr}"
+
+    @pytest.mark.parametrize("pkg_name", ["acme", "zebra"])
+    def test_linting_and_formatting_hold_for_other_package_names(
+        self, tmp_path: Path, pkg_name: str
+    ) -> None:
+        """The package name is rendered into sorted lists and into lines near the length limit.
+
+        `AcmeError` sorts on either side of `APIError` depending on whether the
+        order minds case, `ZebraError` sorts last, and a short name shortens
+        lines that the default name wraps.
+        """
+        project_dir = _generate_project(
+            tmp_path / pkg_name,
+            {"project_type": "api-client", "directory_name": pkg_name, "pkg_name": pkg_name},
+        )
+        subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
+
+        check = subprocess.run(
+            ["uv", "run", "ruff", "check", "."], capture_output=True, text=True, cwd=project_dir
+        )
+        formatting = subprocess.run(
+            ["uv", "run", "ruff", "format", "--check", "."],
+            capture_output=True,
+            text=True,
+            cwd=project_dir,
+        )
+
+        assert check.returncode == 0, f"Ruff check failed: {check.stdout}\n{check.stderr}"
+        assert formatting.returncode == 0, f"Ruff format failed: {formatting.stdout}"
+
+    def test_type_checking_passes(self, generated_api_client_project: Path) -> None:
+        """A freshly generated API client must pass pyright (strict)."""
+        result = subprocess.run(
+            ["uv", "run", "pyright"],
+            capture_output=True,
+            text=True,
+            cwd=generated_api_client_project,
+        )
+        assert result.returncode == 0, f"Pyright failed: {result.stdout}\n{result.stderr}"
+
+    def test_tests_pass(self, generated_api_client_project: Path) -> None:
+        """The client's own test suite (MockTransport, no network) must pass."""
+        result = subprocess.run(
+            ["uv", "run", "pytest", "-v"],
+            capture_output=True,
+            text=True,
+            cwd=generated_api_client_project,
+        )
+        assert result.returncode == 0, f"Tests failed: {result.stdout}\n{result.stderr}"
+        assert "tests/test_client.py" in result.stdout
+
+    def test_demo_runs_as_a_module(self, generated_api_client_project: Path) -> None:
+        """The demo is how a new user checks the key and the base URL.
+
+        It runs as `python -m <package>`, so the library still installs no
+        command. Its behaviour is covered by the project's own tests.
+        """
+        assert (generated_api_client_project / "tests/test_main.py").exists()
+
+        result = subprocess.run(
+            ["uv", "run", "python", "-m", "my_awesome_project", "--help"],
+            capture_output=True,
+            text=True,
+            cwd=generated_api_client_project,
+        )
+
+        assert result.returncode == 0, f"Demo failed: {result.stdout}\n{result.stderr}"
+        assert "usage: python -m my_awesome_project" in result.stdout
+
+    def test_api_reference_documents_the_client(self, generated_api_client_project: Path) -> None:
+        """The docstrings of the client are its reference, and the strict build reads them."""
+        result = subprocess.run(
+            ["uv", "run", "mkdocs", "build", "--strict"],
+            capture_output=True,
+            text=True,
+            cwd=generated_api_client_project,
+        )
+
+        assert result.returncode == 0, f"mkdocs build failed: {result.stdout}\n{result.stderr}"
+        reference = (generated_api_client_project / "site/reference/index.html").read_text()
+        assert "my_awesome_project.client" in reference
+        assert "my_awesome_project.errors" in reference
+
+    def test_passes_its_own_hooks(self, tmp_path: Path) -> None:
+        """Bandit and the end-of-file fixer only run as hooks, so the suite runs them too.
+
+        The first pass may rewrite files, as the post-generate task allows, so
+        the second pass is the one that must be clean.
+        """
+        if not which("prek"):
+            pytest.skip("prek not installed")
+        project_dir = _generate_project(tmp_path / "client-hooks", {"project_type": "api-client"})
+        subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
+        # prek needs a git repo to find files via --all-files
+        subprocess.run(["git", "init", "-q"], cwd=project_dir, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+        subprocess.run(["prek", "run", "--all-files"], cwd=project_dir, capture_output=True)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True)
+
+        result = subprocess.run(
+            ["prek", "run", "--all-files"], capture_output=True, text=True, cwd=project_dir
+        )
+
+        assert result.returncode == 0, f"Hooks failed:\n{result.stdout}\n{result.stderr}"
+        assert "bandit" in result.stdout
 
 
 class TestDependencyUpdates:

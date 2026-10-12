@@ -46,6 +46,7 @@ _Itens marcados estão implementados!_
 * [x] Pipeline de CI opcional (GitHub Actions ou Forgejo Actions)
 * [x] Site de documentação MkDocs em todo projeto, com publicação opcional no Forgejo
 * [x] Tipo de projeto só de documentação, sem pacote Python
+* [x] Tipo de projeto cliente de API, com cliente httpx2, erros próprios e configurações via pydantic-settings
 * [x] Atualização de projetos existentes com `copier update`
 
 ### Hooks Habilitados
@@ -96,6 +97,7 @@ _Checked items are implemented_
 * [x] Optional CI pipeline (GitHub Actions or Forgejo Actions)
 * [x] MkDocs documentation site in every project, with optional publishing on Forgejo
 * [x] Docs-only project type, with no Python package
+* [x] API client project type, with an httpx2 client, its own errors and pydantic-settings
 * [x] Update existing projects with `copier update`
 
 ### Hooks

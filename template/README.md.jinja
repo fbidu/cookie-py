@@ -21,6 +21,8 @@ The requirements are
 3. {% if project_type == "docs" %}Run `uv run mkdocs serve` and open <http://127.0.0.1:8000>{% else %}🎆{% endif %}
 {% if project_type == "cli" %}
 This project ships a CLI. After syncing, run it with `uv run {{ directory_name }} --help`.
+{% elif project_type == "api-client" %}
+This project is an API client. Build a `Client` with an API key, or copy `.env.example` to `.env` and call `Client.from_env()`. With the `.env` in place, `uv run python -m {{ pkg_name }} /some/path` sends one GET request and prints the response.
 {% endif %}
 
 ## Development
@@ -114,6 +116,8 @@ Os requerimentos são
 3. {% if project_type == "docs" %}Execute `uv run mkdocs serve` e abra <http://127.0.0.1:8000>{% else %}🎆{% endif %}
 {% if project_type == "cli" %}
 Este projeto inclui uma CLI. Após sincronizar, execute-a com `uv run {{ directory_name }} --help`.
+{% elif project_type == "api-client" %}
+Este projeto é um cliente de API. Crie um `Client` com uma chave de API, ou copie `.env.example` para `.env` e chame `Client.from_env()`. Com o `.env` no lugar, `uv run python -m {{ pkg_name }} /some/path` envia uma requisição GET e imprime a resposta.
 {% endif %}
 
 ## Desenvolvimento

@@ -1,0 +1,134 @@
+"""The client, and the one method every request goes through."""
+
+import logging
+import time
+from http import HTTPStatus
+from typing import Self
+
+import httpx2
+from pydantic import ValidationError
+
+from {{ pkg_name }}.errors import (
+    APIError,
+    AuthenticationError,
+    ConfigurationError,
+    TransportError,
+)
+from {{ pkg_name }}.settings import (
+    DEFAULT_BASE_URL,
+    DEFAULT_TIMEOUT,
+    ENV_PREFIX,
+    Settings,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class Client:
+    """A synchronous client for the API.
+
+    Args:
+        api_key: The key sent with every request.
+        base_url: The URL every request path is appended to.
+        timeout: How many seconds a request may take before it fails.
+        transport: What sends the requests. Tests pass an `httpx2.MockTransport`
+            here, so that nothing reaches the network.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = DEFAULT_BASE_URL,
+        timeout: float = DEFAULT_TIMEOUT,
+        transport: httpx2.BaseTransport | None = None,
+    ) -> None:
+        self._http = httpx2.Client(
+            base_url=base_url,
+            timeout=timeout,
+            # Placeholder: replace it with the authentication scheme of the API.
+            headers={"Authorization": f"Bearer {api_key}"},
+            transport=transport,
+        )
+
+    @classmethod
+    def from_env(cls, transport: httpx2.BaseTransport | None = None) -> Self:
+        """Build a client from the environment and a `.env` file.
+
+        `Settings` names the variables.
+
+        Args:
+            transport: What sends the requests, as in the constructor.
+
+        Raises:
+            ConfigurationError: A variable is missing or holds an invalid value.
+        """
+        try:
+            settings = Settings()  # pyright: ignore[reportCallIssue]
+        except ValidationError as error:
+            # Name the variable, which is what the caller has to set.
+            problems = [
+                f"{ENV_PREFIX}{str(problem['loc'][0]).upper()}: {problem['msg']}"
+                for problem in error.errors()
+            ]
+            raise ConfigurationError("; ".join(problems)) from error
+        return cls(
+            settings.api_key.get_secret_value(),
+            settings.base_url,
+            settings.timeout,
+            transport,
+        )
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, str] | None = None,
+        json: object = None,
+    ) -> httpx2.Response:
+        """Send one request and return its response.
+
+        Every endpoint method calls this one, so the timeout, the errors and
+        the logging are the same for all of them. There is no automatic retry.
+
+        Args:
+            method: The HTTP method.
+            path: The path of the endpoint, appended to the base URL.
+            params: The query parameters.
+            json: The request body, sent as JSON.
+
+        Raises:
+            TransportError: The connection failed or timed out.
+            AuthenticationError: The status code is 401.
+            APIError: The status code is any other one of 400 or above.
+        """
+        started = time.monotonic()
+        try:
+            response = self._http.request(method, path, params=params, json=json)
+        except httpx2.RequestError as error:
+            raise TransportError(str(error)) from error
+        # Headers, query parameters and bodies can carry credentials, so a
+        # record holds none of them.
+        logger.log(
+            logging.WARNING if response.is_error else logging.DEBUG,
+            "%s %s answered %d in %.0f ms",
+            method,
+            path,
+            response.status_code,
+            (time.monotonic() - started) * 1000,
+        )
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            raise AuthenticationError(response.status_code, response.text)
+        if response.is_error:
+            raise APIError(response.status_code, response.text)
+        return response
+
+    def close(self) -> None:
+        """Close the connections the client holds."""
+        self._http.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()

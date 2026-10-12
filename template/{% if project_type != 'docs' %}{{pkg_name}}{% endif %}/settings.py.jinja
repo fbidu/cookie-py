@@ -1,0 +1,27 @@
+"""Settings of the client, read from the environment and a `.env` file."""
+
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ENV_PREFIX = "{{ pkg_name | upper }}_"
+# Placeholder: replace it with the base URL of the API.
+DEFAULT_BASE_URL = "https://api.example.com"
+# In seconds.
+DEFAULT_TIMEOUT = 10.0
+
+
+class Settings(BaseSettings):
+    """What `Client.from_env` builds a client from.
+
+    Each field is read from the variable of the same name, in upper case, with
+    the prefix `{{ pkg_name | upper }}_`.
+
+    `.env` is looked up in the working directory, and a variable set in the
+    environment overrides the file.
+    """
+
+    model_config = SettingsConfigDict(env_prefix=ENV_PREFIX, env_file=".env", extra="ignore")
+
+    api_key: SecretStr
+    base_url: str = DEFAULT_BASE_URL
+    timeout: float = DEFAULT_TIMEOUT

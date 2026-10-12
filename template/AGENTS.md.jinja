@@ -44,6 +44,40 @@
 {%- endif %}
 {% else %}
 <!-- Describe here what this project is, how it is laid out and how to work in it. -->
+{%- if project_type == "api-client" %}
+
+## API client
+
+- This project is a Python client for an HTTP API. A caller builds one `Client` and calls one method per endpoint.
+- `DEFAULT_BASE_URL` in `{{ pkg_name }}/settings.py` and the `Authorization` header in `{{ pkg_name }}/client.py` are placeholders. Replace both with the values of the API before adding an endpoint.
+
+### Layout
+
+- `{{ pkg_name }}/client.py` holds `Client`. Every request goes through `Client.request`.
+- `{{ pkg_name }}/errors.py` holds every exception the package raises.
+- `{{ pkg_name }}/settings.py` holds `Settings`, which reads the environment and `.env`.
+- `{{ pkg_name }}/__main__.py` holds the demo that `python -m {{ pkg_name }}` runs. It sends one GET request through `Client.from_env` and prints the response.
+- `.env.example` lists the variables that `Settings` reads. `.env` holds the real values and is never committed.
+
+### Adding an endpoint
+
+- An endpoint is one public method. The endpoints of one resource share a module, and the client exposes that resource as an attribute.
+- A pydantic model represents each request body and each response body.
+- A response model ignores unknown fields, which is the pydantic default. An API adds fields without notice, so `extra="forbid"` would break existing callers.
+- A method validates the response into its model. When validation fails, it raises `UnexpectedResponseError`.
+- A paginated endpoint is exposed as an iterator that requests one page at a time.
+- The test of an endpoint is written before its method.
+
+### Rules
+
+- `httpx2` sends every request, and only inside `Client.request`.
+- The client is synchronous. It never retries on its own, so the caller decides when to retry.
+- Every exception the package raises derives from `{{ error_class }}`. No `httpx2` or `pydantic` exception reaches the caller.
+- The package logs under the `{{ pkg_name }}` logger and attaches only a `NullHandler`. No log record holds an API key, a password, a query parameter or a request body.
+- The constructor of `Client` takes its credentials as arguments. Only `Client.from_env` reads the environment.
+- A new setting is added to `Settings` and to `.env.example` in the same change.
+- Tests replace the network with `httpx2.MockTransport` and patch no internals of the package. No test sends a request to the real API.
+{%- endif %}
 
 ## Documentation
 

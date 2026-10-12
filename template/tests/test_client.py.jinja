@@ -1,0 +1,193 @@
+"""Tests of the client. An `httpx2.MockTransport` stands in for the network."""
+
+import logging
+
+import httpx2
+import pytest
+
+from {{ pkg_name }} import (
+    APIError,
+    AuthenticationError,
+    Client,
+    ConfigurationError,
+    TransportError,
+    UnexpectedResponseError,
+)
+from {{ pkg_name }}.errors import {{ error_class }}
+
+API_KEY = "key-under-test"
+ENV_PREFIX = "{{ pkg_name | upper }}_"
+ENV_VARIABLES = (f"{ENV_PREFIX}API_KEY", f"{ENV_PREFIX}BASE_URL", f"{ENV_PREFIX}TIMEOUT")
+
+
+def test_each_request_carries_the_api_key_to_the_base_url() -> None:
+    """The caller sets the key and the base URL once, on the client.
+
+    A request that dropped either would be refused or reach another server.
+    """
+    # Setup
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200, json={"ok": True})
+
+    client = Client(API_KEY, base_url="https://api.test", transport=httpx2.MockTransport(handler))
+
+    # Act
+    response = client.request("GET", "/things", params={"page": "2"})
+
+    # Assert
+    assert response.json() == {"ok": True}
+    [request] = seen
+    assert request.url == "https://api.test/things?page=2"
+    assert request.headers["Authorization"] == f"Bearer {API_KEY}"
+
+
+def test_an_error_status_becomes_an_api_error() -> None:
+    """A caller branches on the status code and reports the message, so the error holds both."""
+    # Setup
+    transport = httpx2.MockTransport(lambda _: httpx2.Response(503, text="down for maintenance"))
+    client = Client(API_KEY, transport=transport)
+
+    # Act
+    with pytest.raises(APIError) as raised:
+        client.request("GET", "/things")
+
+    # Assert
+    assert raised.value.status_code == 503
+    assert raised.value.message == "down for maintenance"
+    assert not isinstance(raised.value, AuthenticationError)
+
+
+def test_rejected_credentials_have_their_own_error() -> None:
+    """A rejected key calls for a new key, not for another attempt.
+
+    The caller can only tell the two apart if the 401 has a class of its own.
+    """
+    # Setup
+    transport = httpx2.MockTransport(lambda _: httpx2.Response(401, text="bad key"))
+    client = Client(API_KEY, transport=transport)
+
+    # Act and assert
+    with pytest.raises(AuthenticationError):
+        client.request("GET", "/things")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [httpx2.ConnectError("connection refused"), httpx2.ReadTimeout("timed out")],
+)
+def test_a_request_without_a_response_becomes_a_transport_error(failure: Exception) -> None:
+    """The HTTP library is an implementation detail.
+
+    A caller that had to catch its exceptions could not survive a change of library.
+    """
+
+    # Setup
+    def handler(_: httpx2.Request) -> httpx2.Response:
+        raise failure
+
+    client = Client(API_KEY, transport=httpx2.MockTransport(handler))
+
+    # Act and assert
+    with pytest.raises(TransportError):
+        client.request("GET", "/things")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        APIError,
+        AuthenticationError,
+        ConfigurationError,
+        TransportError,
+        UnexpectedResponseError,
+    ],
+)
+def test_every_error_shares_one_base_class(error: type[Exception]) -> None:
+    """A caller that wants to catch anything this package raises names one class."""
+    assert issubclass(error, {{ error_class }})
+
+
+def test_log_records_never_hold_the_api_key(caplog: pytest.LogCaptureFixture) -> None:
+    """Logs travel to places a credential must never reach."""
+    # Setup
+    client = Client(API_KEY, transport=httpx2.MockTransport(lambda _: httpx2.Response(200)))
+
+    # Act
+    with caplog.at_level(logging.DEBUG, logger="{{ pkg_name }}"):
+        client.request("GET", "/things")
+
+    # Assert
+    assert "/things" in caplog.text, "Sanity check: the request was logged"
+    assert API_KEY not in caplog.text
+
+
+def test_leaving_the_with_block_closes_the_connections() -> None:
+    """A host that builds many clients must not keep the connections of each one open."""
+
+    # Setup
+    class Transport(httpx2.MockTransport):
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    transport = Transport(lambda _: httpx2.Response(200))
+
+    # Act
+    with Client(API_KEY, transport=transport) as client:
+        client.request("GET", "/things")
+        assert not transport.closed, "Sanity check: the transport is open inside the block"
+
+    # Assert
+    assert transport.closed
+
+
+def test_from_env_reads_the_env_file(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The key lives in a git-ignored `.env`, so that it is never exported into a shell.
+
+    The prefix keeps the variables apart from those of the application that
+    hosts the client.
+    """
+    # Setup
+    working_directory = tmp_path_factory.mktemp("with-env-file")
+    (working_directory / ".env").write_text(
+        f"{ENV_PREFIX}API_KEY=key-from-env-file\n{ENV_PREFIX}BASE_URL=https://env-file.test\n"
+    )
+    monkeypatch.chdir(working_directory)
+    for variable in ENV_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200)
+
+    # Act
+    Client.from_env(transport=httpx2.MockTransport(handler)).request("GET", "/things")
+
+    # Assert
+    [request] = seen
+    assert request.url == "https://env-file.test/things"
+    assert request.headers["Authorization"] == "Bearer key-from-env-file"
+
+
+def test_from_env_reports_a_missing_key(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing key is the first mistake of every new user.
+
+    The error must name the variable to set, which is not the name of the field.
+    """
+    # Setup
+    monkeypatch.chdir(tmp_path_factory.mktemp("without-env-file"))
+    for variable in ENV_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+
+    # Act and assert
+    with pytest.raises(ConfigurationError, match=f"{ENV_PREFIX}API_KEY: Field required"):
+        Client.from_env()

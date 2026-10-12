@@ -1,0 +1,78 @@
+"""Tests of the demo that `python -m {{ pkg_name }}` runs."""
+
+import httpx2
+import pytest
+
+from {{ pkg_name }}.__main__ import main
+from {{ pkg_name }}.client import Client
+
+
+def test_demo_prints_the_status_and_the_body(capsys: pytest.CaptureFixture[str]) -> None:
+    """The demo is how a new user checks the key and the base URL.
+
+    The status code and the body are what tell them whether both are right.
+    """
+    # Setup
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200, text="pong")
+
+    client = Client("key-under-test", transport=httpx2.MockTransport(handler))
+
+    # Act
+    exit_code = main(["/ping"], client)
+
+    # Assert
+    assert exit_code == 0
+    assert capsys.readouterr().out == "200\npong\n"
+    [request] = seen
+    assert (request.method, request.url.path) == ("GET", "/ping")
+
+
+@pytest.mark.parametrize(
+    ("status_code", "line"),
+    [
+        (401, "AuthenticationError: 401: refused\n"),
+        (503, "APIError: 503: refused\n"),
+    ],
+)
+def test_demo_reports_an_error_in_one_line(
+    capsys: pytest.CaptureFixture[str], status_code: int, line: str
+) -> None:
+    """A traceback would bury the one line that says what the API answered.
+
+    The name of the error tells a rejected key from a failing server.
+    """
+    # Setup
+    transport = httpx2.MockTransport(lambda _: httpx2.Response(status_code, text="refused"))
+    client = Client("key-under-test", transport=transport)
+
+    # Act
+    exit_code = main(["/ping"], client)
+
+    # Assert
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert captured.err == line
+    assert captured.out == ""
+
+
+def test_demo_names_the_missing_key(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Running the demo before writing `.env` is the first thing a new user does."""
+    # Setup
+    monkeypatch.chdir(tmp_path_factory.mktemp("without-env-file"))
+    monkeypatch.delenv("{{ pkg_name | upper }}_API_KEY", raising=False)
+
+    # Act
+    exit_code = main([])
+
+    # Assert
+    assert exit_code == 1
+    error = capsys.readouterr().err
+    assert error == "ConfigurationError: {{ pkg_name | upper }}_API_KEY: Field required\n"
