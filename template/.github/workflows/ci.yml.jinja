@@ -14,8 +14,9 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
-          cache-dependency-glob: uv.lock
-      - run: uv python install {{ python_version }}
+          cache-dependency-glob: |
+            uv.lock
+            .python-version
       - run: uv sync --dev --all-extras
       - uses: actions/cache@v6.1.0
         with:

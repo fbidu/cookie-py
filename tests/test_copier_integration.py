@@ -305,10 +305,8 @@ class TestCopierGeneration:
         assert 'site_description: "Say \\"hi\\" to João\'s API"' in mkdocs_yml
 
     def test_workflow_files_rendered_correctly(self, generated_project: Path) -> None:
-        """Test that workflow files have rendered Copier vars and preserved GH Actions syntax."""
+        """Test that workflow files keep GH Actions syntax and no cookiecutter leftovers."""
         ci_yml = (generated_project / ".github/workflows/ci.yml").read_text()
-        # Copier variables should be rendered
-        assert "uv python install 3.14" in ci_yml
         assert "cookiecutter" not in ci_yml
         # GitHub Actions expressions ({% raw %}…{% endraw %}) should be preserved verbatim
         assert "${{ runner.os }}" in ci_yml
@@ -768,7 +766,6 @@ class TestCIProviderGeneration:
 
         ci_yml = (project_dir / ".forgejo/workflows/ci.yml").read_text()
         assert "runs-on: ubuntu-latest" in ci_yml
-        assert "uv python install 3.14" in ci_yml
         # Forgejo Actions expressions ({% raw %}…{% endraw %}) should survive verbatim.
         assert "${{ hashFiles(" in ci_yml
         assert "{% raw %}" not in ci_yml, "Unrendered jinja raw block found"
@@ -813,13 +810,18 @@ class TestCIProviderGeneration:
 
         The key must not use `runner.os`: on the homelab runners it evaluates
         to both `Linux` and `linux`, so the cache would miss half the time.
+
+        The key must cover `.python-version`. A Python bump leaves `uv.lock`
+        alone, so the old key would keep hitting, and actions/cache does not
+        save on a hit: wheels built for the new Python would be rebuilt on
+        every run.
         """
         project_dir = _generate_project(tmp_path / "forgejo", {"ci_provider": "forgejo"})
 
         ci_yml = (project_dir / ".forgejo/workflows/ci.yml").read_text()
 
         assert "path: ~/.cache/uv" in ci_yml
-        assert "key: uv-${{ hashFiles('uv.lock') }}" in ci_yml
+        assert "key: uv-${{ hashFiles('uv.lock', '.python-version') }}" in ci_yml
         assert ci_yml.index("path: ~/.cache/uv") < ci_yml.index("uv sync")
         assert "runner.os" not in ci_yml
 
@@ -834,6 +836,49 @@ class TestCIProviderGeneration:
             "  group: ${{ github.workflow }}-${{ github.ref }}\n"
             "  cancel-in-progress: true\n"
         ) in ci_yml
+
+    def test_github_ci_uv_cache_covers_python_version(self, tmp_path: Path) -> None:
+        """setup-uv keys its cache on the Python it finds before any is installed.
+
+        On a fresh runner it finds none and writes `unknown` into the key. A
+        Python bump leaves `uv.lock` alone, so the key would keep hitting, and
+        actions/cache does not save on a hit: wheels built for the new Python
+        would be rebuilt on every run.
+        """
+        project_dir = _generate_project(tmp_path / "github", {"ci_provider": "github"})
+
+        ci_yml = (project_dir / ".github/workflows/ci.yml").read_text()
+
+        assert "enable-cache: true" in ci_yml, "Sanity check: setup-uv owns the uv cache"
+        assert (
+            "          cache-dependency-glob: |\n            uv.lock\n            .python-version\n"
+        ) in ci_yml
+
+    @pytest.mark.parametrize(
+        ("ci_provider", "ci_path"),
+        [("github", ".github/workflows/ci.yml"), ("forgejo", ".forgejo/workflows/ci.yml")],
+    )
+    def test_ci_python_follows_python_version_file(
+        self, tmp_path: Path, ci_provider: str, ci_path: str
+    ) -> None:
+        """Renovate bumps Python by editing `.python-version` alone.
+
+        `uv sync` installs the interpreter that file names. A version written
+        into the workflow is never bumped, so CI would install an interpreter
+        nothing uses and name the step after it.
+        """
+        # Setup
+        project_dir = _generate_project(tmp_path / ci_provider, {"ci_provider": ci_provider})
+
+        # Act
+        ci_yml = (project_dir / ci_path).read_text()
+
+        # Assert
+        python_version = (project_dir / ".python-version").read_text().strip()
+        assert python_version == "3.14", "Sanity check: the default python_version"
+        assert "uv sync" in ci_yml, "Sanity check: the step that installs Python"
+        assert "uv python install" not in ci_yml
+        assert f"Python {python_version}" not in ci_yml
 
     def test_no_ci_generates_nothing(self, tmp_path: Path) -> None:
         """ci_provider=none produces no CI files for any provider."""

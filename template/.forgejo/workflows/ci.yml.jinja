@@ -54,11 +54,10 @@ jobs:
         uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/uv
-          key: uv-{% raw %}${{ hashFiles('uv.lock') }}{% endraw %}
+          key: uv-{% raw %}${{ hashFiles('uv.lock', '.python-version') }}{% endraw %}
 
-      - name: Install Python {{ python_version }}
-        run: uv python install {{ python_version }}
-
+      # Also installs the Python named in `.python-version`, the file Renovate
+      # bumps.
       - name: Install dependencies
         run: uv sync --dev --all-extras
 
