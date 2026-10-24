@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pydantic_ai
 import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -70,3 +71,20 @@ def test_a_run_without_sources_stops_before_it_reaches_a_model(
     assert exit_code == 2
     assert f"No sources in {SOURCES_DIR}/" in capsys.readouterr().err
     assert not (tmp_path / "openapi.yaml").exists()
+
+
+def test_a_run_turns_off_the_pydantic_ai_banner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The run logs its rounds to stderr, where pydantic-ai would print its
+    first-run banner in the middle of them. pydantic-ai already hides the
+    banner under pytest, so this checks the switch instead of the output."""
+    # Setup
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pydantic_ai, "BANNER_ENABLED", True)
+
+    # Act
+    main()
+
+    # Assert
+    assert pydantic_ai.BANNER_ENABLED is False

@@ -9,7 +9,6 @@ from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
-    RetryPromptPart,
     TextPart,
     ToolCallPart,
     UserPromptPart,
@@ -32,10 +31,10 @@ ENGINE_MODULES = [
 def _last_request_text(messages: list[ModelMessage]) -> str:
     request = messages[-1]
     assert isinstance(request, ModelRequest)
+    # pydantic-ai hands a retry to the model as a user prompt, so this also
+    # holds the errors an output validator sent back.
     return "\n".join(
-        str(part.content)
-        for part in request.parts
-        if isinstance(part, UserPromptPart | RetryPromptPart)
+        str(part.content) for part in request.parts if isinstance(part, UserPromptPart)
     )
 
 

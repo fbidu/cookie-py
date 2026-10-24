@@ -11,6 +11,7 @@ import logging
 import sys
 from pathlib import Path
 
+import pydantic_ai
 from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openrouter import OpenRouterProvider
 
@@ -20,6 +21,9 @@ from tools.openapi_agents.settings import Settings
 
 
 def main() -> int:
+    # The run logs its rounds to stderr, and pydantic-ai would print its
+    # first-run banner there, in the middle of them.
+    pydantic_ai.BANNER_ENABLED = False
     logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("tools.openapi_agents").setLevel(logging.INFO)
     repo_root = Path.cwd()

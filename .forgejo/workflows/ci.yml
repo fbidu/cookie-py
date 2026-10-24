@@ -16,6 +16,11 @@ on:
   pull_request:
     branches:
       - main
+  # A generated project installs the newest release of each dependency, so an
+  # upstream release can break it while nothing changes here. The daily run
+  # shows that before someone generates a project.
+  schedule:
+    - cron: "0 5 * * *"
 
 jobs:
   test-template:
