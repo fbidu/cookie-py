@@ -64,3 +64,30 @@ jobs:
           key: prek-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: prek (commit stage)
         run: uv run prek run --all-files --show-diff-on-failure --hook-stage pre-commit
+
+  # Tags each green merge to main that changes what copier reads, with the next
+  # patch version. A new tag makes the copier-update job of every generated
+  # project open a pull request, so a merge that leaves the template alone gets
+  # no tag. Minor and major versions are tagged by hand; copier takes the
+  # highest tag, and the next patch follows it.
+  release:
+    needs: [test-template, prek]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Tag the next patch version
+        run: |
+          latest="$(git tag --merged HEAD --list 'v*' --sort=-v:refname | head -n 1)"
+          if git diff --quiet "$latest" HEAD -- template copier.yml tasks licenses; then
+            echo "Nothing that copier reads changed since $latest, so no tag."
+            exit 0
+          fi
+          version="${latest#v}"
+          next="v${version%.*}.$((${version##*.} + 1))"
+          git config user.name "forgejo-actions"
+          git config user.email "forgejo-actions@noreply.localhost"
+          git tag -a "$next" -m "$next"
+          git push origin "$next"
