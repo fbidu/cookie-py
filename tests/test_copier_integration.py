@@ -1284,6 +1284,34 @@ class TestApiClientProject:
         assert result.returncode == 0, f"Tests failed: {result.stdout}\n{result.stderr}"
         assert "tests/test_client.py" in result.stdout
 
+    def test_tests_pass_when_the_base_url_has_a_path(self, tmp_path: Path) -> None:
+        """Many APIs serve under a path such as `/v1`, and init-sdk fills it in.
+
+        The suite of the scaffold must still pass once the placeholder holds
+        the real base URL, or every such project starts by fixing a test.
+        """
+        # Setup
+        project_dir = _generate_project(
+            tmp_path / "client-with-path", {"project_type": "api-client"}
+        )
+        settings = project_dir / "my_awesome_project/settings.py"
+        placeholder = 'DEFAULT_BASE_URL = "https://api.example.com"'
+        assert placeholder in settings.read_text()  # sanity check: the line init-sdk fills
+        settings.write_text(
+            settings.read_text().replace(
+                placeholder, 'DEFAULT_BASE_URL = "https://api.example.com/v1"'
+            )
+        )
+        subprocess.run(["uv", "sync", "--dev"], cwd=project_dir, check=True, capture_output=True)
+
+        # Act
+        result = subprocess.run(
+            ["uv", "run", "pytest"], capture_output=True, text=True, cwd=project_dir
+        )
+
+        # Assert
+        assert result.returncode == 0, f"Tests failed: {result.stdout}\n{result.stderr}"
+
     def test_demo_runs_as_a_module(self, generated_api_client_project: Path) -> None:
         """The demo is how a new user checks the key and the base URL.
 

@@ -19,7 +19,9 @@ def test_demo_prints_the_status_and_the_body(capsys: pytest.CaptureFixture[str])
         seen.append(request)
         return httpx2.Response(200, text="pong")
 
-    client = Client("key-under-test", transport=httpx2.MockTransport(handler))
+    client = Client(
+        "key-under-test", base_url="https://api.test", transport=httpx2.MockTransport(handler)
+    )
 
     # Act
     exit_code = main(["/ping"], client)
