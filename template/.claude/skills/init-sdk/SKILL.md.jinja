@@ -16,7 +16,7 @@ description: Initialise this spec-first API client. Use when `openapi.yaml` does
 1. What is the name of the API, and where is its documentation? If it has none, is it known only from what a browser sends to it?
 2. Does the vendor publish an OpenAPI or Swagger document? If so, where?
 3. What is the base URL of the API?
-4. How does a request authenticate (which header, which scheme)?
+4. How does a request authenticate (which header, which scheme)? Is the credential a key that the vendor issues, or a session copied from a signed-in browser, such as a cookie or a bearer token? For a session, what does the browser call it, and when does it expire?
 5. Is the code of the server public? If so, where is its repository?
 6. Which endpoints does the first version of the client cover, and which are left out?
 7. Under which terms is the documentation published? May this repository hold a copy of it? For an API known only from HAR captures, ask instead where the captures are.
@@ -112,6 +112,13 @@ description: Initialise this spec-first API client. Use when `openapi.yaml` does
     - When endpoints are left out, add a `path_rule` function and pass it to `agents.build_specer` as `path_rule`. `PathRule` in `tools/openapi_agents/validation.py` documents its contract. Write its test in `tests/tools/test_project.py` first. For HAR captures, section 3b wrote it already.
 - `{{ pkg_name }}/settings.py`: `DEFAULT_BASE_URL` takes the base URL.
 - `{{ pkg_name }}/client.py`: the header that carries the key follows the answer on authentication. Change its test in `tests/test_client.py` first.
+- When the credential is a session copied from a browser, the API has no keys, and the name `api_key` reads wrong. Rename it after what the browser shows: the name of the cookie, such as `user_sid`, or `token` for a bearer token. The variable `{{ pkg_name | upper }}_API_KEY` then becomes `{{ pkg_name | upper }}_USER_SID` or `{{ pkg_name | upper }}_TOKEN`. Change the tests first. The rename covers:
+    - `{{ pkg_name }}/client.py`: the argument of `Client` and its docstring, which says where the browser shows the value.
+    - `{{ pkg_name }}/settings.py`: the field of `Settings`.
+    - `.env.example`: the variable. Its comment says where the browser shows the value and when it expires.
+    - `tests/test_client.py` and `tests/test_main.py`: the variable, and the tests named after the key.
+    - `README.md`, `AGENTS.md` and the docstring of `{{ pkg_name }}/__main__.py`, which speak of a key.
+- For a session, add an `## Authentication` section to `docs/index.md`, before `## Where to go next`. It says that the API has no keys, lists the steps that copy the value from the developer tools of a browser, and says when the value expires and that it then has to be copied again.
 - `AGENTS.md`: describe the API at the top, and remove the bullet that calls these values placeholders.
 - Run `uv run pytest`. Every test must pass before section 6.
 

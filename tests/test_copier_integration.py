@@ -1485,6 +1485,33 @@ class TestSpecFirstApiClient:
         assert "`my_awesome_project/models.py`" in skill
         assert "{{" not in skill, "Unrendered template variable found"
 
+    def test_skill_renames_the_key_in_every_file_that_names_it(
+        self, generated_spec_first_project: Path
+    ) -> None:
+        """A credential copied from a browser is a session, and the skill renames the key after it.
+
+        A file that the rename leaves out keeps calling the session an API key.
+        `tools/` and `tests/tools/` hold the agents, whose key is OpenRouter's,
+        and the skill itself names the key to rename it.
+        """
+        skill = (generated_spec_first_project / ".claude/skills/init-sdk/SKILL.md").read_text()
+        marker = "When the credential is a session copied from a browser"
+        assert marker in skill
+        rename = skill.split(marker)[1].split("\n- ")[0]
+        skipped = {".venv", ".claude", "tools"}
+        holders: list[str] = []
+        for path in generated_spec_first_project.rglob("*"):
+            relative = path.relative_to(generated_spec_first_project)
+            if path.suffix not in {".py", ".md", ".example"} or skipped & set(relative.parts):
+                continue
+            text = path.read_text().lower()
+            if "api_key" in text or "api key" in text:
+                holders.append(relative.as_posix())
+
+        assert "my_awesome_project/client.py" in holders, "Sanity check: the scan finds the client"
+        for holder in holders:
+            assert f"`{holder}`" in rename, f"The rename leaves out {holder}"
+
     def test_env_example_names_the_key_of_the_agents(
         self, generated_spec_first_project: Path
     ) -> None:
