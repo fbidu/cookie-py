@@ -1,0 +1,51 @@
+"""What the digest of HAR captures knows about the API that this client wraps.
+
+The other modules of this package work for any HTTP API and import nothing
+from this one. `python -m tools.har_digest` passes `RULES` to them.
+
+A project whose sources are HAR captures replaces the placeholder when it is
+initialised: see `.claude/skills/init-sdk/SKILL.md`. In any other project,
+nothing reads this module.
+"""
+
+import re
+from collections.abc import Sequence
+
+from tools.har_digest.digest import Rules
+
+# Placeholder: the base URL of the API, as `DEFAULT_BASE_URL` in the package.
+SERVER_URL = "https://api.example.com"
+
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def path_parameter(segments: Sequence[str], index: int) -> str | None:
+    """Name the parameter that `segments[index]` of a captured path stands for.
+
+    A segment that holds a digit is a parameter: a `date` when it is one, and
+    an `id` otherwise. Any other segment is a word of the path, which the
+    digest shows as it was captured, so a rule for a parameter without a
+    digit, such as a user name, goes here.
+    """
+    segment = segments[index]
+    if _DATE.fullmatch(segment):
+        return "date"
+    if any(character.isdigit() for character in segment):
+        return "id"
+    return None
+
+
+RULES = Rules(
+    server_url=SERVER_URL,
+    path_parameter=path_parameter,
+    # The parameters whose values may be shown, such as `date`. The value of
+    # any other one is hidden, because it could identify someone.
+    shown_parameters=frozenset(),
+    # The `path_rule` of `tools/openapi_agents/project.py`, once it has one.
+    path_rule=None,
+    # The forms of string that this API sends, such as
+    # `{"objectid": re.compile(r"[0-9a-f]{24}")}`.
+    string_kinds={},
+    # The keys of personal data in the language of the API, such as `"bairro"`.
+    personal_keys=(),
+)

@@ -1,0 +1,85 @@
+"""How what the client reads from the API becomes a capture."""
+
+import json
+from collections.abc import Sequence
+from pathlib import Path
+
+import httpx2
+
+from {{ pkg_name }} import Client
+from tools.har_digest.digest import Har, Rules, digest
+from tools.har_digest.record import Recorder
+
+SERVER_URL = "https://api.test/v1"
+API_KEY = "key-under-test"
+
+
+def answer(request: httpx2.Request) -> httpx2.Response:
+    """Answer as the API would, with a body that tells the request apart."""
+    return httpx2.Response(200, json={"asked": request.url.path})
+
+
+def digits_rule(segments: Sequence[str], index: int) -> str | None:
+    """A segment of digits is an identifier. The paths below have none."""
+    return "id" if segments[index].isdigit() else None
+
+
+def test_what_the_client_reads_is_written_as_a_capture(tmp_path: Path) -> None:
+    """A browser shows few responses of an endpoint, and a field that is
+    sometimes absent only shows in many. A script reads them through the
+    client, and the capture must hold what the digest reads of a browser's."""
+    # Setup
+    recorder = Recorder(httpx2.MockTransport(answer))
+    capture = tmp_path / "read.har"
+
+    # Act
+    with Client(API_KEY, base_url=SERVER_URL, transport=recorder) as client:
+        client.request("GET", "/things", params={"state": "active"})
+        client.request("POST", "/things/search", json={"page": 0})
+    recorder.write(capture)
+
+    # Assert
+    first, second = Har.model_validate_json(capture.read_bytes()).log.entries
+    assert first.request.method == "GET"
+    assert first.request.url == f"{SERVER_URL}/things?state=active"
+    assert first.request.postData is None
+    assert first.response.status == 200
+    assert first.response.content.mimeType == "application/json"
+    assert json.loads(first.response.content.text) == {"asked": "/v1/things"}
+    assert second.request.postData is not None
+    assert json.loads(second.request.postData.text) == {"page": 0}
+    rules = Rules(server_url=SERVER_URL, path_parameter=digits_rule)
+    assert sorted(digest([first, second], rules).files) == ["things.md"], (
+        "The digest reads the capture as it reads one of a browser"
+    )
+
+
+def test_the_caller_receives_the_response_that_was_recorded() -> None:
+    """The recorder reads the body to keep it. The client reads it after,
+    and must find it whole."""
+    # Setup
+    recorder = Recorder(httpx2.MockTransport(answer))
+
+    # Act
+    with Client(API_KEY, base_url=SERVER_URL, transport=recorder) as client:
+        response = client.request("GET", "/things")
+
+    # Assert
+    assert response.json() == {"asked": "/v1/things"}
+
+
+def test_a_capture_holds_no_credential(tmp_path: Path) -> None:
+    """A capture of a browser holds the session of whoever made it. This one
+    has no reason to, and a file without a credential is one less to guard."""
+    # Setup
+    recorder = Recorder(httpx2.MockTransport(answer))
+    capture = tmp_path / "read.har"
+
+    # Act
+    with Client(API_KEY, base_url=SERVER_URL, transport=recorder) as client:
+        client.request("GET", "/things")
+    recorder.write(capture)
+
+    # Assert
+    assert '"entries":[{' in capture.read_text(), "Sanity check: the request was recorded"
+    assert API_KEY not in capture.read_text()

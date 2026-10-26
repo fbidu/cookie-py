@@ -73,6 +73,7 @@
 - `.env.example` lists the variables that `Settings` reads. `.env` holds the real values and is never committed.
 {%- if spec_first %}
 - `tools/openapi_agents/` holds the agents that write `openapi.yaml`. It is development tooling and is not part of the package.
+- `tools/har_digest/` writes `upstream/` from HAR captures, for an API that has no other source. Its `Recorder` writes a capture from what the client reads. It is development tooling too.
 {%- endif %}
 
 ### Adding an endpoint

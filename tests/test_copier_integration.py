@@ -1387,8 +1387,16 @@ class TestSpecFirstApiClient:
             "tools/openapi_agents/settings.py",
             "tools/openapi_agents/upstream.py",
             "tools/openapi_agents/validation.py",
+            "tools/har_digest/__init__.py",
+            "tools/har_digest/__main__.py",
+            "tools/har_digest/digest.py",
+            "tools/har_digest/project.py",
+            "tools/har_digest/record.py",
             "tests/tools/test_engine.py",
             "tests/tools/test_project.py",
+            "tests/tools/test_har_digest.py",
+            "tests/tools/test_har_project.py",
+            "tests/tools/test_har_record.py",
             ".claude/skills/init-sdk/SKILL.md",
         ]
         for file_path in expected:
@@ -1422,6 +1430,20 @@ class TestSpecFirstApiClient:
         assert "datamodel-codegen" not in hooks
         assert "openapi.yaml" not in (generated_api_client_project / "AGENTS.md").read_text()
         assert "OPENROUTER" not in (generated_api_client_project / ".env.example").read_text()
+
+    def test_captures_are_ignored_by_git(
+        self, generated_spec_first_project: Path, generated_api_client_project: Path
+    ) -> None:
+        """A HAR capture holds the session and the personal data of whoever made it.
+
+        `tools.har_digest` reads `captures/`, so git must never see that
+        directory. A client written by hand has no such tool, and no such line.
+        """
+        ignored = (generated_spec_first_project / ".gitignore").read_text().splitlines()
+        hand_written = (generated_api_client_project / ".gitignore").read_text().splitlines()
+
+        assert "captures/" in ignored
+        assert "captures/" not in hand_written
 
     def test_option_is_ignored_for_other_project_types(self, tmp_path: Path) -> None:
         """The agents write the document of an HTTP API, which only an API client has."""
@@ -1459,6 +1481,7 @@ class TestSpecFirstApiClient:
         assert skill.startswith("---\nname: init-sdk\n")
         assert "`my_awesome_project/settings.py`" in skill
         assert "`tools/openapi_agents/project.py`" in skill
+        assert "`tools/har_digest/project.py`" in skill
         assert "`my_awesome_project/models.py`" in skill
         assert "{{" not in skill, "Unrendered template variable found"
 
@@ -1486,21 +1509,30 @@ class TestSpecFirstApiClient:
         assert readme.count("`OPENROUTER_API_KEY`") == 2
         assert readme.count("uv run datamodel-codegen\n") == 2
 
-    def test_project_module_is_kept_on_a_later_generation(self, tmp_path: Path) -> None:
-        """The init skill rewrites `project.py` for one API, and an update must not undo that.
+    @pytest.mark.parametrize(
+        ("project_module", "engine_module"),
+        [
+            ("tools/openapi_agents/project.py", "tools/openapi_agents/pipeline.py"),
+            ("tools/har_digest/project.py", "tools/har_digest/digest.py"),
+        ],
+    )
+    def test_project_module_is_kept_on_a_later_generation(
+        self, tmp_path: Path, project_module: str, engine_module: str
+    ) -> None:
+        """The init skill rewrites each `project.py` for one API, and an update must not undo that.
 
         The engine beside it stays a template file, so that fixes reach the project.
         """
         project_dir = tmp_path / "initialised"
-        agents_dir = project_dir / "tools/openapi_agents"
-        agents_dir.mkdir(parents=True)
-        (agents_dir / "project.py").write_text("API_NAME = 'Weather'\n")
+        module = project_dir / project_module
+        module.parent.mkdir(parents=True)
+        module.write_text("API_NAME = 'Weather'\n")
 
         _generate_project(project_dir, {"project_type": "api-client", "spec_first": True})
 
-        assert (agents_dir / "project.py").read_text() == "API_NAME = 'Weather'\n"
+        assert module.read_text() == "API_NAME = 'Weather'\n"
         # Sanity check: the engine still arrived
-        assert (agents_dir / "pipeline.py").exists()
+        assert (project_dir / engine_module).exists()
 
     def test_linting_passes(self, generated_spec_first_project: Path) -> None:
         """The agents are linted with the rules of the project they are generated into."""

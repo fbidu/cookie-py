@@ -172,11 +172,13 @@ dependency_updates:
 # Files a project owns once they exist. CLAUDE.md was filled by hand in projects
 # generated before AGENTS.md, and docs/index.md is the project's own home page,
 # so an update must not merge the template's version into them. The init-sdk
-# skill rewrites the project module of the OpenAPI agents for one API.
+# skill rewrites the project modules of the OpenAPI agents and of the HAR
+# digest for one API.
 _skip_if_exists:
   - "CLAUDE.md"
   - "docs/index.md"
   - "tools/openapi_agents/project.py"
+  - "tools/har_digest/project.py"
 
 # --- Conditional file exclusion ---
 

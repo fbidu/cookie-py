@@ -141,3 +141,9 @@ analyzer/data/*
 !analyzer/data/.gitkeep
 analyzer/.snakemake
 # End of https://www.gitignore.io/api/python,visualstudiocode
+{%- if project_type == "api-client" and spec_first %}
+
+# HAR captures of the API, which `tools/har_digest` reads. They hold the
+# session and the personal data of whoever made them.
+captures/
+{%- endif %}

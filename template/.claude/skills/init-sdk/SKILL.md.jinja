@@ -1,6 +1,6 @@
 ---
 name: init-sdk
-description: Initialise this spec-first API client. Use when `openapi.yaml` does not exist yet. It collects what is known about the API, vendors its documentation, fills the placeholders of the scaffold and prepares the first run of the agents that write `openapi.yaml`.
+description: Initialise this spec-first API client. Use when `openapi.yaml` does not exist yet. It collects what is known about the API, vendors its documentation or digests its HAR captures, fills the placeholders of the scaffold and prepares the first run of the agents that write `openapi.yaml`.
 ---
 
 # Initialise the SDK
@@ -13,13 +13,13 @@ description: Initialise this spec-first API client. Use when `openapi.yaml` does
 
 - Ask the user every question below in one message. Do not guess an answer, and do not continue before each one is answered.
 
-1. What is the name of the API, and where is its documentation?
+1. What is the name of the API, and where is its documentation? If it has none, is it known only from what a browser sends to it?
 2. Does the vendor publish an OpenAPI or Swagger document? If so, where?
 3. What is the base URL of the API?
 4. How does a request authenticate (which header, which scheme)?
 5. Is the code of the server public? If so, where is its repository?
 6. Which endpoints does the first version of the client cover, and which are left out?
-7. Under which terms is the documentation published? May this repository hold a copy of it?
+7. Under which terms is the documentation published? May this repository hold a copy of it? For an API known only from HAR captures, ask instead where the captures are.
 
 ## 2. Choose the source of truth
 
@@ -31,6 +31,7 @@ description: Initialise this spec-first API client. Use when `openapi.yaml` does
 | An OpenAPI 3.0 or Swagger 2.0 document from the vendor | That document | Vendor it in section 3. The agents write the 3.1 document from it. |
 | Public server code | The code, then the published documentation | Sections 3 and 4 |
 | Published documentation only | The documentation | Section 3 |
+| HAR captures only | The digest of the captures | Section 3b |
 
 - State the choice to the user in one sentence, and wait for their confirmation.
 
@@ -51,6 +52,44 @@ description: Initialise this spec-first API client. Use when `openapi.yaml` does
 - When the terms of the documentation do not allow a copy in this repository, or the user does not know them, do not commit the copies. Add `upstream/*` and `!upstream/README.md` to `.gitignore`, and tell the user that a new clone has to fetch the sources again.
 - Report the total size of `upstream/` to the user. Above 400 KB, ask the user whether to narrow the scope before continuing.
 
+## 3b. Digest the HAR captures
+
+- This section applies only when the API is known only from HAR captures of a site that uses it. Sections 3 and 4 do not apply.
+- A capture holds the session and the personal data of whoever made it, and the agents send every source to a model. `tools/har_digest` therefore writes a digest of the captures into `upstream/`: one file per resource that keeps the paths, the keys and the types, and replaces every value.
+- git ignores `captures/`. Before anything else, move every capture into it, and check that `git status` lists none of them. Never open a capture with a tool that prints its content.
+- Add `upstream/*` and `!upstream/README.md` to `.gitignore`. The digest derives from the captures, so git keeps only its README.
+- In `tools/openapi_agents/project.py`, fill `SERVER_URL` now. When endpoints are left out, write `path_rule` now too, as section 5 describes.
+- In `tools/har_digest/project.py`:
+    - Replace the placeholder `SERVER_URL` with an import of `SERVER_URL` from `tools.openapi_agents.project`, so that the base URL is stated once.
+    - When `tools/openapi_agents/project.py` has a `path_rule`, import it and pass it to `RULES` as `path_rule`. The digest then leaves out the paths out of scope, and no round of the agents reads them. The rule receives the paths of the digest as well as those of `openapi.yaml`, and the two name their parameters differently, so it never depends on the name of a parameter.
+    - `path_parameter` makes a segment that holds a digit a parameter. Add a rule for a parameter without a digit, such as a user name after `users/` or a flag `true`, and for a word that holds a digit, such as `v2`. Write its test in `tests/tools/test_har_project.py` first.
+    - `shown_parameters` lists the parameters whose values the digest shows. Add one only when the user confirms that no value of it identifies someone, such as `date` for the bounds of a period.
+    - `personal_keys` adds the keys of personal data in the language of the API, such as `bairro`. `string_kinds` adds a form of identifier that the API sends, such as the 24 hexadecimal digits of a MongoDB id.
+- Run `uv run python -m tools.har_digest`. It reads every capture in `captures/`. The exit status tells the outcome:
+    - 0: the digest holds no captured value that it does not name on purpose.
+    - 1: a captured value reached the digest. The report names the line and where the value was captured, never the value. Change the rules so that the digest hides it, and run the tool again. Do not continue before it exits with 0.
+    - 2: `captures/` holds no capture.
+- The check cannot tell a word of a path from a name that someone chose, such as a user name. Show the user the strings that the tool printed as kept, and the paths of the operations (`grep -h '^## ' upstream/*.md`). Continue only after the user confirms that none of them identifies someone.
+- Report the total size of `upstream/` to the user. Above 400 KB, ask the user whether to narrow the scope with `path_rule` before continuing.
+- In section 5, `_SOURCES_AND_SCOPE` starts with the text below, followed by the scope:
+
+    > The API is private and has no documentation, and there is no server code to read. The only source is a digest of what a browser, or the client, sent to the API and what it received. `tools/har_digest` writes the digest from HAR captures, and the prompt carries all of it. `README.md`, among the sources, explains its notation.
+    >
+    > The digest holds a type in place of each value, so the document states what the digest shows and nothing more:
+    >
+    > - The names of the path parameters in the digest are not names of the API. The document gives each parameter a name that says what it identifies.
+    > - A `<digits>` is a string of decimal digits. The document declares it as a string, never as a number, because that is what the API sends.
+    > - A `<one of: ...>` lists the values that were observed, and others may exist. The document declares that property as a string and names the values in its description. It never declares them as an `enum`, which would make the SDK reject a response that holds a new value.
+    > - A 304 response is the cache of the browser at work. The document does not describe it.
+    > - The digest can show few responses of an operation, and almost no error. The document describes only the responses that the digest shows.
+
+- In `AGENTS.md`, replace the bullet about `upstream/` with these:
+    - `upstream/` holds the sources that the agents read. `uv run python -m tools.har_digest` writes them from the HAR captures in `captures/`, and they are never edited.
+    - A source holds the paths, the keys and the types of what was captured, and no value. Read the strings that the tool prints as kept, and the paths, before a run of the agents, which sends the sources to a model.
+    - git ignores `captures/` and every file of `upstream/` except `upstream/README.md`. A capture holds the session and the personal data of whoever made it, so neither is ever committed.
+    - A new endpoint starts as a new capture: use the page of the site that calls it, export the HAR into `captures/` and run the tool again. When the endpoint is out of the scope of `path_rule`, widen the rule first.
+    - A browser shows few responses of each endpoint, so a model inferred from them can require a field that some responses lack. Before an endpoint is implemented, a script reads many of its responses through a `Client` whose transport is a `Recorder` from `tools.har_digest.record`, and validates them against the model. It sends only requests that change nothing. The script writes its capture into `captures/`, and the tool runs again, so that the next run of the agents sees what the browser did not.
+
 ## 4. Wire the public server code
 
 - This section applies only when the code of the server is public. Otherwise leave `tools/openapi_agents/upstream.py` as it is: nothing uses it.
@@ -69,8 +108,8 @@ description: Initialise this spec-first API client. Use when `openapi.yaml` does
 - Each placeholder is marked with a `# Placeholder:` comment. Remove the comment when the value is filled.
 - `tools/openapi_agents/project.py`:
     - `API_NAME`, `SERVER_URL` and `AUTHENTICATION` take the answers of section 1.
-    - `_SOURCES_AND_SCOPE` names each source, says which one decides when two of them disagree, and states the scope.
-    - When endpoints are left out, add a `path_rule` function and pass it to `agents.build_specer` as `path_rule`. `PathRule` in `tools/openapi_agents/validation.py` documents its contract. Write its test in `tests/tools/test_project.py` first.
+    - `_SOURCES_AND_SCOPE` names each source, says which one decides when two of them disagree, and states the scope. For HAR captures, it starts with the text of section 3b.
+    - When endpoints are left out, add a `path_rule` function and pass it to `agents.build_specer` as `path_rule`. `PathRule` in `tools/openapi_agents/validation.py` documents its contract. Write its test in `tests/tools/test_project.py` first. For HAR captures, section 3b wrote it already.
 - `{{ pkg_name }}/settings.py`: `DEFAULT_BASE_URL` takes the base URL.
 - `{{ pkg_name }}/client.py`: the header that carries the key follows the answer on authentication. Change its test in `tests/test_client.py` first.
 - `AGENTS.md`: describe the API at the top, and remove the bullet that calls these values placeholders.

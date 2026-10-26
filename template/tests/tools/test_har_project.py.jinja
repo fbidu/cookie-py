@@ -1,0 +1,38 @@
+"""What the digest of HAR captures knows about this project's API."""
+
+import pytest
+
+from tools.har_digest.digest import Entry, digest
+from tools.har_digest.project import RULES, SERVER_URL, path_parameter
+
+
+@pytest.mark.parametrize(
+    ("segment", "parameter"),
+    [("123456789", "id"), ("a1b2c3", "id"), ("2026-10-24", "date"), ("orders", None)],
+)
+def test_a_segment_that_holds_a_digit_is_a_parameter(segment: str, parameter: str | None) -> None:
+    """An identifier in a path tells nothing about the API and can name a
+    person. A word of the path is what the document needs."""
+    assert path_parameter(["", "users", segment], 2) == parameter
+
+
+def test_no_value_of_a_parameter_is_shown_until_the_project_allows_it() -> None:
+    """A segment such as a patient number would leave the machine on every
+    run of the agents. A kind of parameter is shown only once someone has
+    decided that its values identify nobody."""
+    # Setup
+    captured = Entry.model_validate(
+        {
+            "startedDateTime": "2026-10-24T16:04:51.167+01:00",
+            "request": {"method": "GET", "url": f"{SERVER_URL}/history/2026-10-24/123456789"},
+            "response": {"status": 200, "content": {}},
+        }
+    )
+
+    # Act
+    [text] = digest([captured], RULES).files.values()
+
+    # Assert
+    assert "## GET /history/{date}/{id}\n" in text
+    assert "2026-10-24" not in text
+    assert "123456789" not in text

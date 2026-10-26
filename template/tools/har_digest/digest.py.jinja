@@ -1,0 +1,620 @@
+"""Turn HAR captures of an API into the sources the agents read.
+
+An API that has no documentation and no public server code is known only from
+what a browser sent to it and what it received. A capture also holds the
+session and the personal data of whoever made it, and the agents send every
+source to a model. This module therefore writes a digest: one file per
+resource that keeps the paths, the keys and the types, and replaces every
+value. What it knows about one API comes in a `Rules`.
+"""
+
+# `_Shape` names itself in its fields, which Python 3.13 cannot evaluate while
+# the class is being created.
+from __future__ import annotations
+
+import json
+import re
+from collections import Counter
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Set as AbstractSet
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from urllib.parse import parse_qsl, urlsplit
+
+from pydantic import BaseModel
+
+from tools.openapi_agents.validation import PathRule
+
+type Json = dict[str, Json] | list[Json] | str | int | float | bool | None
+
+# The name of the parameter that `segments[index]` of a captured path stands
+# for, or None when the segment is a word of the path.
+type PathParameter = Callable[[Sequence[str], int], str | None]
+
+# The forms of string that every API sends, in the order they are tried.
+_KINDS = {
+    "datetime": re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?"),
+    "date": re.compile(r"\d{4}-\d{2}-\d{2}"),
+    "uuid": re.compile(r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"),
+    "digits": re.compile(r"\d+"),
+    "url": re.compile(r"https?://\S+"),
+}
+_KIND_MEANINGS = {
+    "datetime": "ISO 8601",
+    "date": "`YYYY-MM-DD`",
+    "uuid": "a UUID",
+    "digits": "decimal digits only",
+    "url": "an HTTP URL",
+}
+# A string is kept as it is only when it is a single word seen at least this
+# many times, with at least two sightings for each distinct value.
+_MIN_REPEATS = 4
+# A position with more distinct values than this is an open list, such as the
+# names of shops, which anyone can add to.
+_MAX_VALUES = 16
+_WORD = re.compile(r"[^\W\d][\w-]{0,31}")
+# A name, an address or what someone typed can repeat as often as a status
+# does. The key is what tells them apart, so a string under one of these is
+# never kept. `Rules.personal_keys` adds those of one API.
+_PERSONAL_KEYS = (
+    r"name|user|nick|login|slug|title|mail|phone|contact|address|street|city|zip|postal"
+    r"|birth|gender|document|descri|instruc|text|message|comment|note|bio|token|secret"
+    r"|password|search|query|term|keyword|^q$"
+)
+# The headers that a browser adds to every request by itself. The others are
+# what the site chose to send, which the API may require.
+_BROWSER_HEADERS = frozenset(
+    {
+        "accept-encoding",
+        "accept-language",
+        "alt-used",
+        "cache-control",
+        "connection",
+        "content-length",
+        "dnt",
+        "host",
+        "if-modified-since",
+        "if-none-match",
+        "origin",
+        "pragma",
+        "priority",
+        "referer",
+        "te",
+        "upgrade-insecure-requests",
+        "user-agent",
+    }
+)
+# A captured value shorter than this matches too much of a digest to tell
+# anything.
+_MIN_LEAK_LENGTH = 3
+# A run of the characters that a word, an identifier or a number is made of.
+_TOKEN = re.compile(r"[\w-]+")
+# The words of the notation, which a captured value can equal.
+_NOTATION_WORDS = frozenset(
+    {
+        "Headers",
+        "Query",
+        "Request",
+        "Requested",
+        "Response",
+        "any",
+        "body",
+        "boolean",
+        "integer",
+        "null",
+        "number",
+        "one",
+        "parameters",
+        "string",
+    }
+)
+
+
+@dataclass(frozen=True)
+class Rules:
+    """What the digest knows about one API.
+
+    `tools/har_digest/project.py` holds the rules of this project's API.
+    """
+
+    # The base URL of the API. A request to any other URL is left out.
+    server_url: str
+    path_parameter: PathParameter
+    # The parameters whose values the digest may show. The value of any other
+    # one could identify someone, so it is hidden.
+    shown_parameters: AbstractSet[str] = frozenset()
+    # Refuses the paths out of scope. It receives the template of a path, with
+    # the parameters that the digest named.
+    path_rule: PathRule | None = None
+    # The forms of string that this API sends, by the name the digest gives
+    # them. They are tried before the forms that every API sends.
+    string_kinds: Mapping[str, re.Pattern[str]] = field(default_factory=dict[str, re.Pattern[str]])
+    # More keys under which a string is never kept, as regular expressions.
+    personal_keys: Sequence[str] = ()
+
+    def kinds(self) -> dict[str, re.Pattern[str]]:
+        """Return every form of string that the digest names, in the order they are tried."""
+        return {**self.string_kinds, **_KINDS}
+
+
+# The models name only what the digest reads. The cookies of a capture have no
+# field here, so they are dropped when the capture is parsed. The values of the
+# headers are read only to check that none of them reaches the digest.
+class _PostData(BaseModel):
+    text: str = ""
+
+
+class _Header(BaseModel):
+    name: str
+    value: str = ""
+
+
+class _Request(BaseModel):
+    method: str
+    url: str
+    headers: list[_Header] = []
+    postData: _PostData | None = None
+
+
+class _Content(BaseModel):
+    mimeType: str = ""
+    text: str = ""
+
+
+class _Response(BaseModel):
+    status: int
+    content: _Content
+
+
+class Entry(BaseModel):
+    """One request of a capture, with its response."""
+
+    startedDateTime: str
+    request: _Request
+    response: _Response
+
+
+class _Log(BaseModel):
+    entries: list[Entry]
+
+
+class Har(BaseModel):
+    """A HAR capture, as the developer tools of a browser export it."""
+
+    log: _Log
+
+
+@dataclass(frozen=True)
+class Digest:
+    """What the captures show about the API."""
+
+    # The Markdown of each resource, by file name.
+    files: dict[str, str]
+    # Every string of a body that the digest holds as it was captured, after
+    # the place it was seen in.
+    literals: list[str]
+    # The lines of the files that hold a value of the captures that the digest
+    # does not name on purpose.
+    leaks: list[Leak]
+
+
+@dataclass(frozen=True, order=True)
+class Leak:
+    """A line of the digest that holds a value of the captures."""
+
+    file: str
+    line: int
+    # Where the value was captured, in words that do not repeat it.
+    origin: str
+
+
+@dataclass(frozen=True)
+class _Policy:
+    """How the digest of one API turns a value into what it shows."""
+
+    kinds: dict[str, re.Pattern[str]]
+    personal_key: re.Pattern[str]
+
+    def kind(self, value: str) -> str | None:
+        """Return what `value` is when its form tells, and None for any other string."""
+        for name, pattern in self.kinds.items():
+            if pattern.fullmatch(value):
+                return f"<{name}>"
+        return None
+
+
+@dataclass
+class _Shape:
+    """What every sample showed at one position of a JSON value."""
+
+    seen: int = 0
+    kinds: set[str] = field(default_factory=set[str])
+    # The strings of no known form, and how often each one was seen. They
+    # only decide whether the position keeps its values.
+    strings: Counter[str] = field(default_factory=Counter[str])
+    objects: int = 0
+    fields: dict[str, _Shape] = field(default_factory=dict[str, "_Shape"])
+    items: _Shape | None = None
+
+    def add(self, value: Json, policy: _Policy) -> None:
+        self.seen += 1
+        match value:
+            case None:
+                self.kinds.add("null")
+            case bool():
+                self.kinds.add("<boolean>")
+            case int():
+                self.kinds.add("<integer>")
+            case float():
+                self.kinds.add("<number>")
+            case str():
+                if kind := policy.kind(value):
+                    self.kinds.add(kind)
+                else:
+                    self.strings[value] += 1
+            case list():
+                self.items = self.items or _Shape()
+                for item in value:
+                    self.items.add(item, policy)
+            case dict():
+                self.objects += 1
+                for key, item in value.items():
+                    # An object keyed by identifiers or dates has one key per record.
+                    name = policy.kind(key) or key
+                    self.fields.setdefault(name, _Shape()).add(item, policy)
+
+    def render(self, where: str, literals: list[str], policy: _Policy) -> Json:
+        """Return the shape in the notation that the README explains.
+
+        `where` names the position, and each string kept as it was captured
+        is appended to `literals` after it.
+        """
+        kinds = self.kinds - {"<integer>"} if "<number>" in self.kinds else self.kinds
+        scalars = sorted(kinds, key=lambda kind: (kind == "null", kind))
+        if self.strings:
+            scalars.append(self._strings(where, literals, policy))
+        alternatives: list[Json] = [" | ".join(scalars)] if scalars else []
+        if self.objects:
+            alternatives.append(
+                {
+                    name + ("" if shape.seen >= self.objects else "?"): shape.render(
+                        f"{where}.{name}", literals, policy
+                    )
+                    for name, shape in self.fields.items()
+                }
+            )
+        if self.items is not None:
+            item = self.items.render(f"{where}[]", literals, policy)
+            alternatives.append([] if item is None else [item])
+        if len(alternatives) > 1:
+            return {"<any of>": alternatives}
+        return alternatives[0] if alternatives else None
+
+    def _strings(self, where: str, literals: list[str], policy: _Policy) -> str:
+        key = where.rsplit(".", 1)[-1]
+        total = self.strings.total()
+        repeats = total >= _MIN_REPEATS and len(self.strings) * 2 <= total
+        repeats = repeats and len(self.strings) <= _MAX_VALUES
+        words = all(_WORD.fullmatch(value) for value in self.strings)
+        if not repeats or not words or policy.personal_key.search(key):
+            return "<string>"
+        values = ", ".join(sorted(self.strings))
+        literals.append(f"{where}: {values}")
+        return f"<one of: {values}>"
+
+
+@dataclass
+class _Operation:
+    """Every capture of one method on one path template."""
+
+    statuses: Counter[int] = field(default_factory=Counter[int])
+    # How many requests sent each header that a browser does not add itself.
+    headers: Counter[str] = field(default_factory=Counter[str])
+    # How many requests carried headers at all. A capture that the client
+    # wrote holds none, so its requests say nothing about them.
+    headed: int = 0
+    # The paths as requested, with the values of the hidden parameters hidden.
+    paths: set[str] = field(default_factory=set[str])
+    query: _Shape = field(default_factory=_Shape)
+    sent: _Shape = field(default_factory=_Shape)
+    responses: dict[int, _Shape] = field(default_factory=dict[int, _Shape])
+
+
+def _template(path: str, query: Mapping[str, str], rules: Rules) -> tuple[str, str]:
+    """Return the template of `path`, and `path` with only the shown values in it.
+
+    Some sites repeat a segment of a path in the query of the same request,
+    and the name of that query parameter then names the segment.
+    """
+    names = {value: key for key, value in query.items()}
+    segments = path.split("/")
+    template: list[str] = []
+    shown: list[str] = []
+    for index, segment in enumerate(segments):
+        parameter = rules.path_parameter(segments, index)
+        if parameter is None:
+            template.append(segment)
+            shown.append(segment)
+            continue
+        name = "{" + names.get(segment, parameter) + "}"
+        template.append(name)
+        shown.append(segment if parameter in rules.shown_parameters else name)
+    return "/".join(template), "/".join(shown)
+
+
+def _block(shape: _Shape, where: str, literals: list[str], policy: _Policy) -> str:
+    rendered = json.dumps(shape.render(where, literals, policy), indent=2, ensure_ascii=False)
+    return f"```json\n{rendered}\n```\n"
+
+
+def _markdown(name: str, operation: _Operation, literals: list[str], policy: _Policy) -> str:
+    statuses = ", ".join(
+        f"{status} ({count})" for status, count in sorted(operation.statuses.items())
+    )
+    lines = [f"## {name}\n", f"Statuses: {statuses}.\n"]
+    if operation.paths != {name.split(" ", 1)[1]}:
+        paths = ", ".join(f"`{path}`" for path in sorted(operation.paths))
+        lines.append(f"Requested as: {paths}.\n")
+    if operation.headers:
+        headers = ", ".join(
+            f"`{header}" + ("" if count == operation.headed else "?") + "`"
+            for header, count in sorted(operation.headers.items())
+        )
+        lines.append(f"Headers: {headers}.\n")
+    if operation.query.seen:
+        query = _block(operation.query, f"{name} query", literals, policy)
+        lines.append("Query parameters:\n\n" + query)
+    if operation.sent.seen:
+        sent = _block(operation.sent, f"{name} request", literals, policy)
+        lines.append("Request body:\n\n" + sent)
+    for status, shape in sorted(operation.responses.items()):
+        response = _block(shape, f"{name} {status} ", literals, policy)
+        lines.append(f"Response {status}:\n\n" + response)
+    return "\n".join(lines)
+
+
+def _scalars(value: Json, where: str, policy: _Policy) -> Iterator[tuple[str, str]]:
+    """Yield each string and number in `value` as text, after its position."""
+    match value:
+        case bool() | None:
+            pass
+        case str() | int() | float():
+            yield str(value), where
+        case list():
+            for item in value:
+                yield from _scalars(item, f"{where}[]", policy)
+        case dict():
+            for key, item in value.items():
+                yield from _scalars(item, f"{where}.{policy.kind(key) or key}", policy)
+
+
+def _request_values(
+    entry: Entry, path: str, query: Mapping[str, str], rules: Rules
+) -> Iterator[tuple[str, str]]:
+    """Yield each value in the path, the query and the headers of `entry`, after its origin."""
+    method = entry.request.method
+    segments = path.split("/")
+    for index, segment in enumerate(segments):
+        if rules.path_parameter(segments, index) is not None:
+            yield segment, f"segment {index} of a {method} path"
+    for key, value in query.items():
+        yield value, f"the query parameter `{key}`"
+    for header in entry.request.headers:
+        yield header.value, f"the header `{header.name.lower()}`"
+
+
+def _names(shape: _Shape) -> Iterator[str]:
+    """Yield every key under `shape`, as the digest shows it."""
+    for name, child in shape.fields.items():
+        yield name
+        yield from _names(child)
+    if shape.items is not None:
+        yield from _names(shape.items)
+
+
+def _named(
+    operations: Mapping[str, _Operation], literals: Iterable[str], policy: _Policy
+) -> set[str]:
+    """Return every value that the digest of `operations` holds on purpose."""
+    named = {*_NOTATION_WORDS, *policy.kinds}
+    for name, operation in operations.items():
+        method, template = name.split(" ", 1)
+        named.add(method)
+        for path in (template, *operation.paths):
+            named.update(segment for segment in path.split("/") if not segment.startswith("{"))
+        named.update(operation.headers)
+        named.update(str(status) for status in operation.statuses)
+        for shape in (operation.query, operation.sent, *operation.responses.values()):
+            named.update(_names(shape))
+    # A kept string is a single word, so it holds no comma and no space.
+    named.update(value for literal in literals for value in literal.rsplit(": ", 1)[1].split(", "))
+    return named
+
+
+def _leaks(
+    files: Mapping[str, str], values: Mapping[str, str], named: AbstractSet[str]
+) -> list[Leak]:
+    """Return each line of `files` that holds a value of `values` outside of `named`.
+
+    `values` maps each captured value to where it was captured.
+    """
+    tokens = {name: set(_TOKEN.findall(text)) for name, text in files.items()}
+    leaks: list[Leak] = []
+    for value, origin in values.items():
+        if len(value) < _MIN_LEAK_LENGTH or value in named:
+            continue
+        if _TOKEN.fullmatch(value):
+            hits = [name for name in files if value in tokens[name]]
+        else:
+            hits = [name for name, text in files.items() if value in text]
+        if not hits:
+            continue
+        pattern = re.compile(rf"(?<![\w-]){re.escape(value)}(?![\w-])")
+        for name in hits:
+            for number, line in enumerate(files[name].splitlines(), start=1):
+                # The digest counted the numbers of this line itself.
+                if not line.startswith("Statuses:") and pattern.search(line):
+                    leaks.append(Leak(name, number, origin))
+    return sorted(leaks)
+
+
+def _resource(template: str) -> str:
+    # `/things/...` belongs to `things`, and `/api/product/...` to `product`.
+    segments = template.split("/")[1:]
+    return segments[1] if segments[0] == "api" and len(segments) > 1 else segments[0]
+
+
+def digest(entries: Iterable[Entry], rules: Rules) -> Digest:
+    """Describe the requests to the API in scope among `entries`, without their values."""
+    policy = _Policy(
+        rules.kinds(),
+        re.compile("|".join((_PERSONAL_KEYS, *rules.personal_keys)), re.IGNORECASE),
+    )
+    server = urlsplit(rules.server_url)
+    prefix = server.path.rstrip("/")
+    operations: dict[str, _Operation] = {}
+    # Every value of the requests in scope, and where it was first captured.
+    values: dict[str, str] = {}
+    for entry in entries:
+        url = urlsplit(entry.request.url)
+        if url.netloc != server.netloc or not url.path.startswith(prefix + "/"):
+            continue
+        # A request the browser aborted has no response, and a CORS preflight
+        # is the browser asking leave to send the request that follows it.
+        if not entry.response.status or entry.request.method == "OPTIONS":
+            continue
+        query = dict(parse_qsl(url.query, keep_blank_values=True))
+        path = url.path.removeprefix(prefix)
+        template, shown = _template(path, query, rules)
+        if rules.path_rule and rules.path_rule(template):
+            continue
+        for value, origin in _request_values(entry, path, query, rules):
+            values.setdefault(value, origin)
+        method = entry.request.method
+        operation = operations.setdefault(f"{method} {template}", _Operation())
+        operation.statuses[entry.response.status] += 1
+        operation.headed += bool(entry.request.headers)
+        operation.headers.update(
+            {
+                name
+                for header in entry.request.headers
+                if not (name := header.name.lower()).startswith((":", "sec-"))
+                and name not in _BROWSER_HEADERS
+            }
+        )
+        operation.paths.add(shown)
+        if query:
+            operation.query.add(dict[str, Json](query), policy)
+        if entry.request.postData and entry.request.postData.text:
+            sent: Json = json.loads(entry.request.postData.text)
+            operation.sent.add(sent, policy)
+            for value, where in _scalars(sent, "body", policy):
+                values.setdefault(value, f"`{where}` of a {method} request")
+        content = entry.response.content
+        if content.text and content.mimeType.startswith("application/json"):
+            # A capture records a 304 with the body that the browser had
+            # cached, which is the body of an earlier 200.
+            cached = entry.response.status == HTTPStatus.NOT_MODIFIED
+            status = HTTPStatus.OK.value if cached else entry.response.status
+            received: Json = json.loads(content.text)
+            operation.responses.setdefault(status, _Shape()).add(received, policy)
+            for value, where in _scalars(received, "body", policy):
+                values.setdefault(value, f"`{where}` of a {status} response")
+
+    literals: list[str] = []
+    sections: dict[str, list[str]] = {}
+    for name in sorted(operations, key=lambda name: name.split(" ", 1)[::-1]):
+        resource = _resource(name.split(" ", 1)[1])
+        sections.setdefault(resource, []).append(
+            _markdown(name, operations[name], literals, policy)
+        )
+    files = {
+        f"{resource}.md": f"# {resource}\n\n" + "\n".join(parts)
+        for resource, parts in sections.items()
+    }
+    return Digest(files, literals, _leaks(files, values, _named(operations, literals, policy)))
+
+
+def readme(rules: Rules, captures: Sequence[str], files: Iterable[str]) -> str:
+    """Return the README of the sources directory, which explains the notation of the digest.
+
+    Args:
+        rules: The rules the digest was written with.
+        captures: One line per capture that the digest describes.
+        files: The names of the files of the digest.
+    """
+    server = rules.server_url
+    if rules.shown_parameters:
+        shown = ", ".join("`{" + name + "}`" for name in sorted(rules.shown_parameters))
+        parameters = (
+            "- `Requested as` lists the paths as they were requested, when they hold a "
+            f"parameter whose values may be shown: {shown}. The value of any other "
+            "parameter could identify someone, and is never shown.\n"
+        )
+    else:
+        parameters = "- The value of a parameter could identify someone, and is never shown.\n"
+    *others, last = [
+        f"`<{name}>` ({_KIND_MEANINGS.get(name) or f'matches `{pattern.pattern}`'})"
+        for name, pattern in rules.kinds().items()
+    ]
+    kinds = f"{', '.join(others)} and {last}"
+    return f"""\
+# Sources of `openapi.yaml`
+
+`uv run python -m tools.har_digest` wrote this directory. Do not edit it: \
+capture the site again and run the tool again.
+
+The API has no documentation. Each file here describes what was sent to \
+{server} and what was received, in these HAR captures. A browser exported \
+them, or `tools.har_digest.record` wrote them from what the client read:
+
+{"\n".join(captures)}
+
+The digest leaves out the requests to other URLs, the paths that `path_rule` \
+in `tools/openapi_agents/project.py` puts out of scope, and the CORS preflight \
+requests (`OPTIONS`) that the browser sent before the others.
+
+The files, one per resource:
+
+{"\n".join(f"- `{name}`" for name in sorted(files))}
+
+git keeps only this file. The others derive from private captures and are \
+generated again from them.
+
+## How to read a file
+
+- A path is relative to {server}.
+- A name in braces stands for a segment that changes from one request to \
+another. The tool chose these names; the API does not name its path \
+parameters. When the query of a request repeats the value of a segment, the \
+segment takes the name of that query parameter.
+{parameters}\
+- `Statuses` counts the responses by status. A 304 is the cache of the \
+browser at work, and a client that sends no `If-None-Match` does not receive \
+it. The body that the browser had cached is counted as a body of the 200.
+- `Headers` names the headers that the site sent, and leaves out those that a \
+browser adds to every request. A name that ends in `?` was absent from at \
+least one request of the browser. A capture that the client wrote holds no \
+headers. No value of a header is shown, and the captures do not show which \
+headers the API requires.
+- A query or a body is shown as JSON in which a type stands for each value: \
+`<string>`, `<integer>`, `<number>`, `<boolean>` and `null`, and for a string \
+of a known form {kinds}. A query holds only strings, as it does on the wire.
+{_NOTATION}"""
+
+
+# The notation of the shapes, as the README explains it.
+_NOTATION = """\
+- `<one of: a, b>` is a string. Those are the values that were observed, and \
+others may exist.
+- `a | b` means that both were observed at that position.
+- A key that ends in `?` was absent from at least one of the objects \
+observed. The `?` is not part of the key.
+- `[x]` is an array, and `x` merges every element observed. `[]` means that \
+only empty arrays were observed.
+- A key of a known form, such as `{"<date>": x}`, stands for every key of \
+that form, and `x` merges their values.
+- `{"<any of>": [x, y]}` means that both shapes were observed at that position.
+- The shape of a body merges every capture of the operation. Few captures \
+cannot show that a field is sometimes absent or sometimes null.
+"""

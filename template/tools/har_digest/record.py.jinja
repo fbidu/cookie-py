@@ -1,0 +1,67 @@
+"""Keep what the client reads from the API as a HAR capture.
+
+`openapi.yaml` is inferred from captures, and a browser shows few responses of
+each endpoint. A field that is sometimes absent or null only shows in many. A
+script that reads them through the client passes a `Recorder` as the
+transport, and writes a capture that `tools.har_digest` reads beside those of
+a browser:
+
+    recorder = Recorder()
+    with Client.from_env(transport=recorder) as client:
+        client.request("GET", "/orders")
+    recorder.write(Path("captures/orders.har"))
+
+Such a script only sends requests that change nothing on the API.
+"""
+
+from datetime import UTC, datetime
+from pathlib import Path
+
+import httpx2
+
+from tools.har_digest.digest import Har
+
+
+class Recorder(httpx2.BaseTransport):
+    """Send each request as usual, and keep it with its response.
+
+    Args:
+        transport: What sends the requests. The default sends them to the network.
+    """
+
+    def __init__(self, transport: httpx2.BaseTransport | None = None) -> None:
+        self._transport = transport or httpx2.HTTPTransport()
+        self._entries: list[dict[str, object]] = []
+
+    def handle_request(self, request: httpx2.Request) -> httpx2.Response:
+        started = datetime.now(UTC).isoformat()
+        response = self._transport.handle_request(request)
+        response.read()
+        # Only what the digest reads is kept. The headers are not, so the
+        # capture does not hold the session.
+        self._entries.append(
+            {
+                "startedDateTime": started,
+                "request": {
+                    "method": request.method,
+                    "url": str(request.url),
+                    "postData": {"text": request.content.decode()} if request.content else None,
+                },
+                "response": {
+                    "status": response.status_code,
+                    "content": {
+                        "mimeType": response.headers.get("Content-Type", ""),
+                        "text": response.text,
+                    },
+                },
+            }
+        )
+        return response
+
+    def write(self, capture: Path) -> None:
+        """Write what was recorded to `capture`, as a HAR file."""
+        har = Har.model_validate({"log": {"entries": self._entries}})
+        capture.write_text(har.model_dump_json())
+
+    def close(self) -> None:
+        self._transport.close()

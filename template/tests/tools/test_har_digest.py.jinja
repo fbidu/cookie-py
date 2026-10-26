@@ -1,0 +1,602 @@
+"""How HAR captures of an API become the sources the agents read."""
+
+import json
+import re
+from collections.abc import Sequence
+from pathlib import Path
+
+import pytest
+
+from tools.har_digest.__main__ import CAPTURES_DIR, SOURCES_DIR, main
+from tools.har_digest.digest import Entry, Leak, Rules, digest, readme
+
+SERVER_URL = "https://api.test/v1"
+TOKEN = "token-under-test"
+USER_ID = "123456789"
+OTHER_USER_ID = "987654321"
+
+
+def digit_rule(segments: Sequence[str], index: int) -> str | None:
+    """A segment that holds a digit is an identifier, as in a new project."""
+    return "id" if any(character.isdigit() for character in segments[index]) else None
+
+
+RULES = Rules(server_url=SERVER_URL, path_parameter=digit_rule)
+
+
+def entry(
+    method: str,
+    url: str,
+    *,
+    status: int = 200,
+    body: object = None,
+    sent: object = None,
+    headers: Sequence[tuple[str, str]] = (),
+) -> Entry:
+    """One request as a browser records it, credentials included."""
+    return Entry.model_validate(
+        {
+            "startedDateTime": "2026-10-24T16:04:51.167+01:00",
+            "request": {
+                "method": method,
+                "url": url,
+                "headers": [
+                    {"name": name, "value": value}
+                    for name, value in [("Authorization", f"Bearer {TOKEN}"), *headers]
+                ],
+                "postData": None if sent is None else {"text": json.dumps(sent)},
+            },
+            "response": {
+                "status": status,
+                "content": {
+                    "mimeType": "application/json; charset=utf-8",
+                    "text": "" if body is None else json.dumps(body),
+                },
+            },
+        }
+    )
+
+
+def json_block(text: str, index: int = 0) -> object:
+    return json.loads(text.split("```json\n")[index + 1].split("```", maxsplit=1)[0])
+
+
+def test_a_body_keeps_its_structure_and_loses_its_values() -> None:
+    """The digest is sent to a model on every run of the agents, and a capture
+    holds the session and the personal data of whoever made it. Only the keys
+    and the types may leave the machine."""
+    # Setup
+    body = {
+        "number": USER_ID,
+        "owner": {"fullName": "Maria Silva", "avatar": "https://cdn.test/maria.png"},
+        "token": "6f1c2a0e-3b4d-4e5f-8a9b-0c1d2e3f4a5b",
+        "copies": 1,
+        "price": 2.5,
+        "annulled": False,
+        "pin": None,
+        "created": "2026-10-24T10:15:00",
+        "expires": "2027-04-24",
+    }
+
+    # Act
+    result = digest([entry("GET", f"{SERVER_URL}/things/active", body=body)], RULES)
+
+    # Assert
+    [text] = result.files.values()
+    assert json_block(text) == {
+        "number": "<digits>",
+        "owner": {"fullName": "<string>", "avatar": "<url>"},
+        "token": "<uuid>",
+        "copies": "<integer>",
+        "price": "<number>",
+        "annulled": "<boolean>",
+        "pin": "null",
+        "created": "<datetime>",
+        "expires": "<date>",
+    }
+    for value in (TOKEN, USER_ID, "Maria", "maria.png", "6f1c2a0e", "2.5", "10:15"):
+        assert value not in text
+
+
+def test_the_requests_of_one_endpoint_become_one_operation() -> None:
+    """An endpoint is captured once per thing it was asked about, and the
+    document needs it once, as a path template. The identifier in a path is
+    personal data, so no path of the digest may hold one."""
+    # Setup
+    entries = [
+        entry("GET", f"{SERVER_URL}/users/{USER_ID}/orders", body={"ok": True}),
+        entry("GET", f"{SERVER_URL}/users/{OTHER_USER_ID}/orders", body={"ok": True}),
+    ]
+
+    # Act
+    text = "\n".join(digest(entries, RULES).files.values())
+
+    # Assert
+    assert [line for line in text.splitlines() if line.startswith("## ")] == [
+        "## GET /users/{id}/orders",
+    ]
+    assert "Requested as" not in text
+    for value in (USER_ID, OTHER_USER_ID):
+        assert value not in text
+
+
+def test_a_segment_takes_the_name_of_the_query_parameter_that_repeats_it() -> None:
+    """Some sites send an identifier both in the path and in the query. The
+    query names it, which tells the author of the document what the segment
+    is without showing its value."""
+    # Setup
+    url = f"{SERVER_URL}/users/{USER_ID}?culture=pt-PT&userNumber={USER_ID}"
+
+    # Act
+    result = digest([entry("GET", url, body={})], RULES)
+
+    # Assert
+    [text] = result.files.values()
+    assert "## GET /users/{userNumber}\n" in text
+    assert USER_ID not in text
+
+
+def test_a_parameter_shows_its_values_only_when_the_rules_allow_it() -> None:
+    """A value in a path can identify someone, so the digest hides it unless
+    the project says that a kind of parameter is safe. The values of a safe
+    one, such as the bounds of a period, tell the author what it means."""
+
+    # Setup
+    def date_rule(segments: Sequence[str], index: int) -> str | None:
+        return "date" if re.fullmatch(r"\d{4}-\d{2}-\d{2}", segments[index]) else None
+
+    captured = entry("GET", f"{SERVER_URL}/history/2025-10-24/2026-10-24", body={})
+    hidden = Rules(server_url=SERVER_URL, path_parameter=date_rule)
+    shown = Rules(server_url=SERVER_URL, path_parameter=date_rule, shown_parameters={"date"})
+
+    # Act
+    [hidden_text] = digest([captured], hidden).files.values()
+    [shown_text] = digest([captured], shown).files.values()
+
+    # Assert
+    assert "## GET /history/{date}/{date}\n" in hidden_text
+    assert "2025-10-24" not in hidden_text
+    assert "## GET /history/{date}/{date}\n" in shown_text
+    assert "Requested as: `/history/2025-10-24/2026-10-24`." in shown_text
+
+
+def test_the_readme_names_the_parameters_whose_values_are_shown() -> None:
+    """The agents learn the notation from the README. A `Requested as` line
+    without it reads as a list of paths that the API serves."""
+    # Setup
+    rules = Rules(server_url=SERVER_URL, path_parameter=digit_rule, shown_parameters={"date"})
+
+    # Act
+    text = readme(rules, ["- `site.har`, captured on 2026-10-24"], ["things.md"])
+
+    # Assert
+    assert "`Requested as` lists the paths as they were requested" in text
+    assert "may be shown: `{date}`." in text
+
+
+def test_the_elements_of_an_array_merge_into_one_shape() -> None:
+    """The document says which fields are required and which are nullable.
+    Only the differences between the elements show it, so the merged shape
+    has to keep them."""
+    # Setup
+    body = [
+        {"number": USER_ID, "renewable": 1, "annulment": {"annulled": 0}},
+        {"number": OTHER_USER_ID, "annulment": None},
+    ]
+
+    # Act
+    result = digest([entry("GET", f"{SERVER_URL}/things/active", body=body)], RULES)
+
+    # Assert
+    [text] = result.files.values()
+    assert json_block(text) == [
+        {
+            "number": "<digits>",
+            "renewable?": "<integer>",
+            "annulment": {"<any of>": ["null", {"annulled": "<integer>"}]},
+        }
+    ]
+
+
+def test_a_string_that_repeats_is_kept_and_reported() -> None:
+    """A type of row is worth more to the document as its values than as a
+    type, and a value that repeats across records is rarely personal. Whoever
+    runs the tool reads the report to see every value that leaves the machine."""
+    # Setup
+    body = [
+        {"rowType": "MED", "dosage": "500 mg"},
+        {"rowType": "MED", "dosage": "1 g"},
+        {"rowType": "DIS", "dosage": "500 mg"},
+        {"rowType": "MED", "dosage": "500 mg"},
+    ]
+
+    # Act
+    result = digest([entry("GET", f"{SERVER_URL}/things/active", body=body)], RULES)
+
+    # Assert
+    [text] = result.files.values()
+    assert '"rowType": "<one of: DIS, MED>"' in text
+    assert '"dosage": "<string>"' in text, "Sanity check: free text is not a word"
+    assert result.literals == ["GET /things/active 200 [].rowType: DIS, MED"]
+
+
+def test_a_repeating_string_under_a_personal_key_is_not_kept() -> None:
+    """What someone typed can be one word that repeats as often as a type of
+    row does, such as when to take a medicine. The name of the key is what
+    tells them apart."""
+    # Setup
+    body = [{"instructions": "SOS", "rowType": "MED"} for _ in range(4)]
+
+    # Act
+    result = digest([entry("GET", f"{SERVER_URL}/things/active", body=body)], RULES)
+
+    # Assert
+    [text] = result.files.values()
+    assert '"rowType": "<one of: MED>"' in text, "Sanity check: the strings repeat enough"
+    assert '"instructions": "<string>"' in text
+    assert "SOS" not in text
+
+
+def test_a_project_adds_the_personal_keys_of_its_api() -> None:
+    """The tool knows the keys of personal data in English. An API names its
+    keys in its own language, such as the neighbourhood of a buyer in Brazil."""
+    # Setup
+    body = [{"bairro": "Centro", "rowType": "MED"} for _ in range(4)]
+    rules = Rules(server_url=SERVER_URL, path_parameter=digit_rule, personal_keys=("bairro",))
+
+    # Act
+    [text] = digest([entry("GET", f"{SERVER_URL}/things/active", body=body)], rules).files.values()
+
+    # Assert
+    assert '"rowType": "<one of: MED>"' in text, "Sanity check: the strings repeat enough"
+    assert '"bairro": "<string>"' in text
+    assert "Centro" not in text
+
+
+def test_a_project_adds_the_kinds_of_string_of_its_api() -> None:
+    """Some identifiers have a form of their own, such as the 24 hexadecimal
+    digits of a MongoDB id. Named, the form tells the author what the value
+    is. An object keyed by them has one key per record, and only one shape."""
+    # Setup
+    first, second = "64b7f0c2a1e3d4b5c6a7f8e9", "64b7f0c2a1e3d4b5c6a7f8ea"
+    body = {"owner": first, "likes": {first: {"at": 1}, second: {"at": 2}}}
+    rules = Rules(
+        server_url=SERVER_URL,
+        path_parameter=digit_rule,
+        string_kinds={"objectid": re.compile(r"[0-9a-f]{24}")},
+    )
+
+    # Act
+    [text] = digest([entry("GET", f"{SERVER_URL}/things/1", body=body)], rules).files.values()
+
+    # Assert
+    assert json_block(text) == {"owner": "<objectid>", "likes": {"<objectid>": {"at": "<integer>"}}}
+    assert first not in text
+
+
+def test_an_object_keyed_by_values_of_a_known_form_has_one_merged_value() -> None:
+    """A calendar is keyed by its days, and each day is a key of its own. The
+    document needs the shape of one day, not a property per date."""
+    # Setup
+    body = {"2026-10-24": {"slots": 3}, "2026-10-25": {"slots": 0}}
+
+    # Act
+    result = digest([entry("GET", f"{SERVER_URL}/calendar", body=body)], RULES)
+
+    # Assert
+    [text] = result.files.values()
+    assert json_block(text) == {"<date>": {"slots": "<integer>"}}
+
+
+def test_the_query_and_the_request_body_are_described_as_the_response_is() -> None:
+    """A caller sends them, so the document needs their names and types. A
+    query value is a string on the wire, and an identifier made of digits is
+    not a number, so both stay strings of their form."""
+    # Setup
+    captured = entry(
+        "POST",
+        f"{SERVER_URL}/things/search?culture=pt-PT&owner={USER_ID}&begin=2025-10-24",
+        sent={"numbers": [USER_ID]},
+        body={"ok": True},
+    )
+
+    # Act
+    result = digest([captured], RULES)
+
+    # Assert
+    [text] = result.files.values()
+    assert "## POST /things/search\n" in text
+    assert json_block(text, 0) == {"culture": "<string>", "owner": "<digits>", "begin": "<date>"}
+    assert json_block(text, 1) == {"numbers": ["<digits>"]}
+    assert USER_ID not in text
+
+
+def test_the_headers_that_the_site_sends_are_named_without_their_values() -> None:
+    """A site can send headers beyond the credential, and the API may require
+    them. Their values hold the session, so only their names reach the
+    digest. A browser adds the same headers to every request, and they would
+    only cost tokens."""
+    # Setup
+    browser = [
+        (":authority", "api.test"),
+        ("User-Agent", "Mozilla/5.0"),
+        ("sec-ch-ua", '"Chromium";v="141"'),
+        ("Accept-Language", "pt-PT"),
+    ]
+    sent = [*browser, ("devicekey", "device-under-test")]
+    first = entry("GET", f"{SERVER_URL}/things/active", body=[], headers=sent)
+    second = entry("GET", f"{SERVER_URL}/things/active", body=[])
+
+    # Act
+    [text] = digest([first, second], RULES).files.values()
+
+    # Assert
+    assert "Headers: `authorization`, `devicekey?`.\n" in text
+    for value in (TOKEN, "device-under-test", "Mozilla"):
+        assert value not in text
+
+
+def test_a_capture_without_headers_does_not_make_a_header_optional() -> None:
+    """A capture that the client wrote holds no headers, so that it holds no
+    session. Beside the captures of a browser, it would mark every header as
+    absent from some request."""
+    # Setup
+    browser = entry("GET", f"{SERVER_URL}/things/active", body=[])
+    recorded = Entry.model_validate(
+        {
+            "startedDateTime": "2026-10-24T16:04:51.167+01:00",
+            "request": {"method": "GET", "url": f"{SERVER_URL}/things/active"},
+            "response": {"status": 200, "content": {"mimeType": "application/json", "text": "[]"}},
+        }
+    )
+
+    # Act
+    [text] = digest([browser, recorded], RULES).files.values()
+
+    # Assert
+    assert "Statuses: 200 (2)." in text, "Sanity check: both requests were read"
+    assert "Headers: `authorization`.\n" in text
+
+
+def test_a_cached_response_is_evidence_of_the_ok_response() -> None:
+    """The browser revalidates some repeated requests. The server answers 304,
+    and the capture records the body the browser had cached, which an earlier
+    200 carried. A client sends no validator and never receives a 304, so that
+    body describes the 200."""
+    # Setup
+    url = f"{SERVER_URL}/things/active"
+    entries = [
+        entry("GET", url, body={"status": 200}),
+        entry("GET", url, status=304, body={"message": "OK"}),
+        entry("GET", url, status=304),
+    ]
+
+    # Act
+    result = digest(entries, RULES)
+
+    # Assert
+    [text] = result.files.values()
+    assert "Statuses: 200 (1), 304 (2)." in text
+    assert "Response 304:" not in text
+    assert json.loads(text.split("Response 200:\n\n```json\n")[1].split("```")[0]) == {
+        "status?": "<integer>",
+        "message?": "<string>",
+    }
+
+
+def test_only_requests_to_the_api_are_described() -> None:
+    """A capture of a site is mostly scripts, images and other services, and a
+    browser that calls another host asks leave first with an `OPTIONS`
+    preflight. None of them is the API, and an aborted request has no answer
+    to show."""
+    # Setup
+    entries = [
+        entry("GET", "https://cdn.test/v1/animations/loading.json", body={}),
+        entry("GET", "https://api.test/other/active", body={}),
+        entry("OPTIONS", f"{SERVER_URL}/things/active"),
+        entry("GET", f"{SERVER_URL}/things/pending", status=0),
+        entry("GET", f"{SERVER_URL}/things/active", body=[]),
+    ]
+
+    # Act
+    result = digest(entries, RULES)
+
+    # Assert
+    assert list(result.files) == ["things.md"]
+    text = result.files["things.md"]
+    assert text.count("\n## ") == 1
+    assert "## GET /things/active\n" in text
+
+
+def test_a_path_out_of_scope_is_left_out() -> None:
+    """The scope of the document is stated once, in `path_rule`. Applied to
+    the captures too, it keeps the agents from reading, on every round, the
+    operations that the document must leave out."""
+
+    # Setup
+    def path_rule(path: str) -> str | None:
+        return None if path.startswith("/things/") else "is out of scope"
+
+    entries = [
+        entry("GET", f"{SERVER_URL}/users/{USER_ID}", body={}),
+        entry("GET", f"{SERVER_URL}/things/active", body=[]),
+    ]
+    rules = Rules(server_url=SERVER_URL, path_parameter=digit_rule, path_rule=path_rule)
+
+    # Act
+    result = digest(entries, rules)
+
+    # Assert
+    assert list(result.files) == ["things.md"]
+
+
+def test_a_resource_under_an_api_prefix_is_named_after_its_own_segment() -> None:
+    """Many sites serve their API under `/api/`. One file per resource keeps
+    the digest readable, and one file named `api` would hold all of it."""
+    # Setup
+    entries = [
+        entry("GET", f"{SERVER_URL}/api/product/list", body=[]),
+        entry("GET", f"{SERVER_URL}/chats/recent", body=[]),
+    ]
+
+    # Act
+    result = digest(entries, RULES)
+
+    # Assert
+    assert sorted(result.files) == ["chats.md", "product.md"]
+
+
+def test_an_open_vocabulary_is_not_kept() -> None:
+    """The names of shops repeat like a type of row, yet there are thousands
+    of them. A position with many distinct values is such a list, and no
+    document would declare its values anyway."""
+    # Setup
+    rows = [{"shop": f"Shop{letter}", "rowType": "MED"} for letter in "abcdefghijklmnopq"]
+
+    # Act
+    result = digest([entry("GET", f"{SERVER_URL}/things/active", body=rows * 2)], RULES)
+
+    # Assert
+    [text] = result.files.values()
+    assert '"rowType": "<one of: MED>"' in text, "Sanity check: the strings repeat enough"
+    assert '"shop": "<string>"' in text
+
+
+def naming_rule(segments: Sequence[str], index: int) -> str | None:
+    """A rule that names the parameter after its value, which no rule should do."""
+    return segments[index] if segments[index - 1] == "profiles" else None
+
+
+def test_a_captured_value_that_reaches_the_digest_is_reported_without_it() -> None:
+    """The rules of a project can let a value through, as this one does with
+    the user name in a path. The check compares every captured value with
+    the digest, and says where the value came from without repeating it,
+    since an agent may be the one reading the report."""
+    # Setup
+    captured = entry("GET", f"{SERVER_URL}/profiles/maria-silva", body={"bio": "x"})
+    rules = Rules(server_url=SERVER_URL, path_parameter=naming_rule)
+
+    # Act
+    result = digest([captured], rules)
+
+    # Assert
+    assert "## GET /profiles/{maria-silva}\n" in result.files["profiles.md"]
+    assert result.leaks == [Leak("profiles.md", 3, "segment 2 of a GET path")]
+
+
+def test_a_value_that_the_digest_names_on_purpose_is_no_leak() -> None:
+    """A value can equal a key, a word of a path, a status or a string kept
+    as it was captured. The digest holds those on purpose, and a check that
+    reported them would be ignored."""
+    # Setup
+    entries = [
+        entry(
+            "GET",
+            f"{SERVER_URL}/things/active?sort=createdAt",
+            body=[{"state": "active", "createdAt": "x", "code": 200, "rowType": "MED"}] * 4,
+        ),
+        entry("GET", f"{SERVER_URL}/things/{USER_ID}", body={"method": "GET"}),
+    ]
+
+    # Act
+    result = digest(entries, RULES)
+
+    # Assert
+    assert '"rowType": "<one of: MED>"' in result.files["things.md"], "Sanity check: kept"
+    assert result.leaks == []
+
+
+def write_capture(path: Path, entries: list[Entry]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"log": {"entries": [item.model_dump() for item in entries]}}))
+
+
+def test_a_run_writes_one_file_per_resource_and_the_readme_that_lists_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The agents read every file of the sources directory. The README is the
+    one file git keeps, so it is what says where the others came from and how
+    to read them."""
+    # Setup
+    capture = tmp_path / "elsewhere" / "site.har"
+    write_capture(
+        capture, [entry("GET", f"{SERVER_URL}/things/active", body=[{"rowType": "MED"}] * 4)]
+    )
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    exit_code = main([str(capture)], RULES)
+
+    # Assert
+    assert exit_code == 0
+    sources = tmp_path / SOURCES_DIR
+    assert sorted(path.name for path in sources.iterdir()) == ["README.md", "things.md"]
+    readme = (sources / "README.md").read_text()
+    for expected in ("`things.md`", "site.har", "2026-10-24", SERVER_URL):
+        assert expected in readme
+    assert "GET /things/active 200 [].rowType: MED" in capsys.readouterr().out
+
+
+def test_a_run_with_a_leak_writes_the_digest_and_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The person who runs the tool opens the files to find what let the
+    value through, so they are written. The exit status stops a run of the
+    agents that follows in a script."""
+    # Setup
+    capture = tmp_path / CAPTURES_DIR / "site.har"
+    write_capture(capture, [entry("GET", f"{SERVER_URL}/profiles/maria-silva", body={})])
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    exit_code = main([], Rules(server_url=SERVER_URL, path_parameter=naming_rule))
+
+    # Assert
+    assert exit_code == 1
+    assert (tmp_path / SOURCES_DIR / "profiles.md").exists()
+    output = capsys.readouterr()
+    assert f"`{SOURCES_DIR}/profiles.md` line 3: a value of segment 2 of a GET path" in output.err
+    assert "maria-silva" not in output.out + output.err
+
+
+def test_a_run_reads_every_capture_in_the_captures_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git ignores `captures/`, so a capture saved there is never committed.
+    Reading it by default makes it the place where captures go."""
+    # Setup
+    write_capture(
+        tmp_path / CAPTURES_DIR / "a.har", [entry("GET", f"{SERVER_URL}/things/a", body={})]
+    )
+    write_capture(
+        tmp_path / CAPTURES_DIR / "b.har", [entry("GET", f"{SERVER_URL}/users/b", body={})]
+    )
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    exit_code = main([], RULES)
+
+    # Assert
+    assert exit_code == 0
+    assert sorted(path.name for path in (tmp_path / SOURCES_DIR).iterdir()) == [
+        "README.md",
+        "things.md",
+        "users.md",
+    ]
+
+
+def test_a_run_without_captures_says_where_they_go(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A capture saved anywhere else could be committed with the session in
+    it, so the message names the directory that git ignores."""
+    # Setup
+    monkeypatch.chdir(tmp_path)
+
+    # Act
+    exit_code = main([], RULES)
+
+    # Assert
+    assert exit_code == 2
+    assert f"{CAPTURES_DIR}/" in capsys.readouterr().err
+    assert not (tmp_path / SOURCES_DIR).exists()

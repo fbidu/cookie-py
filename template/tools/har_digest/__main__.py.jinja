@@ -1,0 +1,82 @@
+"""Write the sources of the agents from HAR captures of the API.
+
+Run from the repository root with `uv run python -m tools.har_digest`. It
+reads every capture in `captures/`, or the captures named as arguments, and
+writes one file per resource and a README into `upstream/`. What it knows
+about the API comes from `tools.har_digest.project`.
+"""
+
+import argparse
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+
+from tools.har_digest import project
+from tools.har_digest.digest import Entry, Har, Rules, digest, readme
+
+# Paths relative to the repository root. git ignores the captures, which hold
+# the session and the personal data of whoever made them.
+CAPTURES_DIR = "captures"
+SOURCES_DIR = "upstream"
+
+
+def main(argv: Sequence[str] | None = None, rules: Rules = project.RULES) -> int:
+    parser = argparse.ArgumentParser(
+        description="Write the sources of the agents from HAR captures."
+    )
+    parser.add_argument(
+        "captures", nargs="*", type=Path, help=f"a HAR capture (default: {CAPTURES_DIR}/*.har)"
+    )
+    captures: list[Path] = parser.parse_args(argv).captures
+    captures = captures or sorted((Path.cwd() / CAPTURES_DIR).glob("*.har"))
+    if not captures:
+        print(
+            f"No capture to read. Save the HAR captures of the site in {CAPTURES_DIR}/, "
+            "which git ignores.",
+            file=sys.stderr,
+        )
+        return 2
+
+    entries: list[Entry] = []
+    described: list[str] = []
+    for capture in captures:
+        har = Har.model_validate_json(capture.read_bytes())
+        entries.extend(har.log.entries)
+        days = sorted({entry.startedDateTime[:10] for entry in har.log.entries})
+        described.append(f"- `{capture.name}`, captured on {' and '.join(days)}")
+    result = digest(entries, rules)
+
+    directory = Path.cwd() / SOURCES_DIR
+    directory.mkdir(exist_ok=True)
+    files = {**result.files, "README.md": readme(rules, described, result.files)}
+    total = 0
+    for name, text in sorted(files.items()):
+        total += (directory / name).write_bytes(text.encode())
+        print(f"Wrote {SOURCES_DIR}/{name}")
+    print(f"{total / 1000:.0f} kB in all.")
+    print(f"{len(result.literals)} positions keep the strings that were captured:")
+    for literal in result.literals:
+        print(f"- {literal}")
+    if result.leaks:
+        # The report names where each value was captured, and never the value.
+        print(
+            f"{len(result.leaks)} lines hold a value of the captures that the digest "
+            "does not name on purpose:",
+            file=sys.stderr,
+        )
+        for leak in result.leaks:
+            print(
+                f"- `{SOURCES_DIR}/{leak.file}` line {leak.line}: a value of {leak.origin}",
+                file=sys.stderr,
+            )
+        print(
+            "Change the rules in tools/har_digest/project.py so that the digest hides "
+            "these values, and run the tool again before any run of the agents.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
